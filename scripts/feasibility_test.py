@@ -36,6 +36,8 @@ OUT_DIR = ROOT / "data" / "feasibility"
 FIELDS = ["created_at", "text", "views", "likes", "replies", "reposts", "quotes", "url"]
 MAX_NO_NEW_SCROLLS = 3
 LOGIN_WALL_PATTERNS = [
+    r"透過 ?Threads ?暢所欲言",
+    r"say more with threads",
     r"log in or sign up",
     r"log in to see more",
     r"sign up to see more",
@@ -174,15 +176,15 @@ DOM_JS = r"""
     let el = a, container = null;
     for (let i = 0; i < 15 && el; i++, el = el.parentElement) {
       if (el.matches && el.matches('[data-pressable-container]')) { container = el; break; }
-      if (el.querySelectorAll && el.querySelectorAll('svg[aria-label]').length >= 3 && el.querySelector('time')) { container = el; break; }
+      if (el.querySelectorAll && el.querySelectorAll('svg[aria-label], svg[title]').length >= 3 && el.querySelector('time')) { container = el; break; }
     }
     if (!container) continue;
     seen.add(code);
     const t = container.querySelector('time');
-    // action buttons: svg aria-label (Like/Reply/Repost/Share or localized) + sibling number text
+    // action buttons: svg label (aria-label or title; Like/Reply/Repost/Share, localized) + number text in the button
     const actions = {};
-    for (const svg of container.querySelectorAll('svg[aria-label]')) {
-      const label = svg.getAttribute('aria-label');
+    for (const svg of container.querySelectorAll('svg[aria-label], svg[title]')) {
+      const label = svg.getAttribute('aria-label') || svg.getAttribute('title');
       const btn = svg.closest('[role="button"]') || svg.parentElement;
       const txt = btn ? (btn.innerText || '').trim() : '';
       if (!(label in actions)) actions[label] = txt;
@@ -257,6 +259,12 @@ def detect_login_wall(page) -> str | None:
         for pat in LOGIN_WALL_PATTERNS:
             if re.search(pat, body, re.I):
                 return f"dialog matched /{pat}/"
+        # The Threads modal is not always role=dialog: look for its visible heading text instead.
+        # (The sidebar's permanent "登入或註冊 Threads" box is deliberately NOT treated as a wall.)
+        for pat in LOGIN_WALL_PATTERNS[:2]:
+            loc = page.get_by_text(re.compile(pat, re.I))
+            if loc.count() and loc.first.is_visible():
+                return f"modal text matched /{pat}/"
     except PWError:
         pass
     return None
