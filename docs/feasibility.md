@@ -88,3 +88,34 @@
 2. 不足 30 篇時，**自動切換到 mock dataset**。mock 的 schema 直接沿用本次實測的欄位（`taken_at`、`caption.text`、`like_count`、`direct_reply_count`、`repost_count`、`quote_count`、`reshare_count`、`code`），數值分布參考實測貼文。在 UI 和報告中明確標示「實測 N 篇 + 模擬 M 篇」以及原因：未登入有登入牆。
 3. 架構預留官方 API 的資料來源介面。如果使用者授權自己的帳號，就改走 API，並開放觀看數欄位。
 4. PRD 的欄位定稿：`views` 設為**選填（nullable）**；互動率改用 `(讚+回覆+轉發+引用) / 粉絲數`；轉發和引用分開存。
+
+## 7. 官方 API（文件查證，未實測）
+
+- 查證日期：2026-11-20。直接讀 Meta 官方文件，**沒有申請 token，也沒有對 API 實際發請求**。`scripts/api_test.py` 已寫好但未執行。
+- 文件出處（`https://developers.facebook.com/documentation/threads/` 底下）：
+  - [retrieve-and-discover-posts/retrieve-posts](https://developers.facebook.com/documentation/threads/retrieve-and-discover-posts/retrieve-posts)：`/profile_posts` 的權限、限制與欄位
+  - [insights](https://developers.facebook.com/documentation/threads/insights)：單篇貼文的互動指標
+  - [get-started](https://developers.facebook.com/documentation/threads/get-started)：權限、tester 與 token
+  - [overview](https://developers.facebook.com/documentation/threads/overview)：速率限制
+  - [threads-use-case](https://developers.facebook.com/documentation/development/create-an-app/threads-use-case)：app 設定
+- 圖例：✅ 文件明確寫出；❓ 文件沒寫，未確認。
+
+| 問題 | 結論 | 文件依據 |
+|---|---|---|
+| 端點與權限 | ✅ `GET /profile_posts?username=<帳號>`，需要 `threads_basic` 和 `threads_profile_discovery`。`username` 必須完全相符。 | retrieve-posts |
+| 能回傳哪些欄位 | ✅ 與 app-scoped user 貼文相同（少了 `owner`）：`id, media_product_type, media_type, media_url, permalink, username, text, timestamp, shortcode, is_quote_post, quoted_post, reposted_post, topic_tag, link_attachment_url, is_verified` 等。 | retrieve-posts 的欄位表 |
+| 讚／回覆／轉發／引用／觀看數 | ✅ **欄位表中沒有任何一項**，`profile_posts` 拿不到互動數。 | retrieve-posts 的欄位表 |
+| 互動數的其他來源 | ✅ 只有 `GET /{media-id}/insights`，指標 `views`、`likes`、`replies`、`reposts`、`quotes`。文件描述為讀取「users' own」貼文，也就是只能查自己的。`views` 標示為 in development。 | insights |
+| 沒過 App Review 能否查別人的公開帳號 | ✅ **基本不能。** 原文：standard access 下只能取得部分 Meta 官方帳號（@meta、@threads、@instagram、@facebook）的貼文。其他公開帳號需要進階存取（Advanced Access），也就是要過 App Review。7eleventw 不在清單內，預期被拒；錯誤訊息實際長相未確認。 | retrieve-posts |
+| 帳號資格 | ✅ 只回傳追蹤者 100 人以上的公開帳號。 | retrieve-posts |
+| 分頁 | ✅ 回傳 `paging.cursors.before/after`，另有 `since`、`until`、`limit` 參數。❓ `limit` 的上限文件沒寫。 | retrieve-posts 範例 |
+| 速率限制 | ✅ `profile_posts`：每位使用者滾動 24 小時內最多 1,000 次請求。一般 API 另有 `4800 × impressions` 的 24 小時呼叫上限。 | retrieve-posts、overview |
+| Token | ✅ 開發測試時可在 Graph API Explorer 產生；要查自己帳號需先把帳號加為 Threads Tester 並在 threads.com 設定接受邀請。短期 token 1 小時，長期 token 60 天。❓ Explorer 的實際操作畫面文件沒寫。 | get-started |
+| API 主機 | 文件範例用 `graph.threads.com`；較舊的 `graph.threads.net` 沙箱可連線，是否仍等效❓未確認。 | 文件範例；沙箱連線測試 |
+
+### 結論
+
+1. **官方 API 無法完成本題目標。** 要分析第三方品牌帳號，需要進階存取（App Review），開發模式只能查 Meta 的 4 個官方帳號；而且即使查得到，`profile_posts` 也沒有任何互動數欄位，只能拿到文字、時間、連結。
+2. 觀看數和互動數只能由**帳號擁有者**授權自己的帳號，透過 `/{media-id}/insights` 取得。因此官方 API 只適合「分析自己的帳號」的情境，這一條要留給 PRD 作為擴充方向。
+3. 對這份筆試，官方 API 不是可行的主要資料來源。依第 6 節的混合式建議，主流程仍是未登入 Playwright，不足時用 mock dataset。
+4. 未實測的部分（實際錯誤訊息、查 @meta 時的真實回傳）不影響以上結論，這些結論都來自文件本身。
