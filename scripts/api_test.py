@@ -30,7 +30,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "data" / "feasibility"
-BASE = "https://graph.threads.net/v1.0"
+# Docs use graph.threads.com; graph.threads.net is the older host. Override with THREADS_API_BASE.
+BASE = os.environ.get("THREADS_API_BASE", "https://graph.threads.net/v1.0")
 
 # id/text/timestamp/permalink are documented for user posts; the count fields are what we are testing.
 CANDIDATE_FIELDS = [
