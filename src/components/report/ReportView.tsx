@@ -39,7 +39,8 @@ function Card({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 function Snippet({ p }: { p: { text: string | null; post_url: string; source: "real" | "mock" } }) {
-  const text = (p.text ?? "").replace(/\s+/g, " ").slice(0, 60) || "（無文字）";
+  // cut by code point (not UTF-16 unit): slice() can split an emoji in half, and the half renders differently on server and client
+  const text = Array.from((p.text ?? "").replace(/\s+/g, " ")).slice(0, 60).join("") || "（無文字）";
   return p.source === "real" ? (
     <a href={p.post_url} target="_blank" rel="noreferrer" className="underline">{text}</a>
   ) : (
