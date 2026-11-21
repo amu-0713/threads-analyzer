@@ -18,7 +18,7 @@ export default async function DashboardPage({
   // RLS limits this to the signed-in user's own jobs.
   const { data: jobs, error: loadError } = await supabase
     .from("jobs")
-    .select("id, username, status, post_count, error, created_at, finished_at")
+    .select("id, username, mode, status, post_count, error, created_at, finished_at")
     .order("created_at", { ascending: false });
 
   return (
