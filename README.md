@@ -6,6 +6,16 @@ Threads 帳號貼文爬取與數據分析工具。
 - 登入與資料：Supabase（Auth + Postgres + RLS）
 - 爬蟲：本機 Python CLI（`scripts/`），寫入 Supabase；前端只讀取
 
+## 展示帳號
+
+| 項目 | 值 |
+|---|---|
+| Email | `demo@threads-analyzer.dev` |
+| 密碼 | `Demo-2026!` |
+
+此帳號底下已有 5 個分析任務（7eleventw、starbuckstw、dcard.tw、pchome24h，以及補 mock 到 30 篇的 7eleventw 主分析任務）。
+（repo 為 private；正式公開前請移除或更換這組帳密。）
+
 ## 目錄結構
 
 | 路徑 | 用途 |
