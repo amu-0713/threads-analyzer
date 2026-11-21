@@ -60,3 +60,10 @@ python -m src.pipeline.validate_mock --job <job-id>      # 分析能否找回 mo
 未登入只拿得到個人頁首屏約 7–9 篇，詳見 `docs/feasibility.md`。Log 在 `logs/`。
 
 分析輸出格式與分組規則見 `docs/analysis.md`。任務流程：`pending → scraping → analyzing → done`（失敗為 `failed`，原因寫在 `jobs.error`）。
+
+## 部署（Vercel）
+
+- Framework：Next.js（自動偵測）；`vercel.json` 把 Functions 區域設在東京（`hnd1`），與 Supabase（ap-northeast-1）同區。
+- **只需要兩個環境變數**（Production / Preview / Development 都設）：
+  `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`。
+- **不可**設定 service_role key：前端只用 anon key + RLS 讀寫；service_role 只給本機 Python pipeline。
