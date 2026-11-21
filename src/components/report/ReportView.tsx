@@ -2,6 +2,7 @@ import Link from "next/link";
 import LengthScatter, { type Pt } from "@/components/charts/LengthScatter";
 import TimeSlotChart from "@/components/charts/TimeSlotChart";
 import { dateTime, interactionRate, num, pct, views } from "@/lib/format";
+import { accountNotes, describePatterns } from "@/lib/observations";
 import type { BriefPost, GroupAnalysis, GroupName, Metrics, Post, Profile, Scope, Summary } from "@/lib/types";
 
 const GROUP_INFO: Record<GroupName, string> = {
@@ -145,6 +146,8 @@ export default function ReportView({ summary, posts, scope }: { summary: Summary
     return r == null ? [] : [{ x: p.char_count, y: +(r * 100).toFixed(3), url: p.post_url, source: p.source }];
   });
   const td = m.time_distribution;
+  const notes = accountNotes(posts);
+  const realCount = posts.filter((p) => p.source === "real").length;
   const groupOf = (p: Post) => (ga?.assignments[p.post_url] ?? "—");
 
   return (
@@ -216,8 +219,28 @@ export default function ReportView({ summary, posts, scope }: { summary: Summary
       <Section title="三組分類" id="groups">{ga ? <Groups ga={ga} /> : <p className="text-sm opacity-70">沒有分組結果。</p>}</Section>
 
       <Section title="觀察">
-        <ul className="list-disc space-y-1 pl-5 text-sm">{insights.map((i) => <li key={i.key}>{i.text}</li>)}</ul>
+        {scope === "real" ? (
+          <>
+            <p className="mb-2 text-xs opacity-70">僅真實資料，只列描述性結果（篇數、中位數、方向）。</p>
+            <ul className="list-disc space-y-1 pl-5 text-sm">{describePatterns(scoped).map((t) => <li key={t}>{t}</li>)}</ul>
+            <p className="mt-2 text-xs opacity-70">樣本太小（真實貼文 {m.n_real} 篇），以上只是描述這批貼文的樣子，不能推論到帳號的一般表現。</p>
+          </>
+        ) : (
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {insights.map((i) => <li key={i.key}>（含 mock，僅用於驗證分析流程）{i.text}</li>)}
+          </ul>
+        )}
       </Section>
+
+      {notes.length > 0 && (
+        <Section title="本帳號內容觀察" id="account-notes">
+          <p className="mb-2 text-xs opacity-70">只用這個帳號的 {realCount} 篇真實貼文整理（不含 mock，與上方切換無關），僅描述，供參考。</p>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm">{notes.map((t) => <li key={t}>{t}</li>)}</ul>
+          <p className="mt-3 text-sm">
+            跨 4 個帳號的完整洞察與內容建議，見 <Link href="/dashboard/compare#insights" className="underline">比較頁的「洞察與內容建議」</Link>。
+          </p>
+        </Section>
+      )}
 
       <Section title={`全部貼文（${scoped.length}）`}>
         <div className="overflow-x-auto">
