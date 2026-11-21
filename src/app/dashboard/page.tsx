@@ -23,11 +23,11 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto w-full max-w-3xl p-8">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <form action="/auth/signout" method="post" className="flex items-center gap-3 text-sm">
           <span className="opacity-70">{user?.email}</span>
-          <button className="underline">登出</button>
+          <button className="whitespace-nowrap underline">登出</button>
         </form>
       </header>
 

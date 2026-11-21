@@ -8,7 +8,8 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
     return <p className="text-sm opacity-60">還沒有任務，從上方新增第一個分析。</p>;
   }
   return (
-    <table className="w-full text-left text-sm">
+    <div className="overflow-x-auto">
+    <table className="tbl w-full min-w-[520px] text-left text-sm">
       <thead>
         <tr className="border-b border-current/20">
           <th className="py-2">帳號</th>
@@ -49,5 +50,6 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
