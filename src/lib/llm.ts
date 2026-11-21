@@ -36,21 +36,35 @@ export function buildPrompt(username: string, summary: { metrics: any; group_ana
   ].join("\n");
 }
 
-export async function generateAdvice(prompt: string): Promise<string> {
-  const key = process.env.LLM_API_KEY;
-  if (!key) throw new Error("LLM_API_KEY is not set");
+async function callGemini(key: string, prompt: string, lowThinking: boolean): Promise<Response> {
   const started = Date.now();
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${LLM_MODEL}:generateContent`, {
+  return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${LLM_MODEL}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 8192,
+        // The default "thinking" made one call take 30-80 s; ask for less (retried without if the API rejects it).
+        ...(lowThinking ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
+      },
     }),
     signal: AbortSignal.timeout(100_000),
   }).catch((e: Error) => {
     throw new Error(`Gemini request failed after ${Math.round((Date.now() - started) / 1000)}s: ${e.message}`);
   });
+}
+
+export async function generateAdvice(prompt: string): Promise<string> {
+  const key = process.env.LLM_API_KEY;
+  if (!key) throw new Error("LLM_API_KEY is not set");
+  const started = Date.now();
+  let res = await callGemini(key, prompt, true);
+  if (res.status === 400) {
+    console.log(`[llm] low-thinking request rejected (400): ${(await res.text()).slice(0, 300)}; retrying with defaults`);
+    res = await callGemini(key, prompt, false);
+  }
   if (!res.ok) {
     const raw = await res.text();
     let detail = raw.slice(0, 200);
