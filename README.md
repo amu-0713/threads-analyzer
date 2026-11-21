@@ -141,7 +141,7 @@ python -m pytest -q tests
 - **爬蟲在本機執行**：網頁只能新增任務與看結果，不能觸發爬取；dashboard 的「重跑」只是把任務設回 `pending`。
 - **Supabase 的 leaked password protection 未啟用**：這項需要付費方案，目前的安全檢查會因此有一則警告。
 - **註冊需要信箱驗證**（Confirm email 開啟）：Supabase 內建信件服務有寄信限制，展示請用上面的 demo 帳號。
-- **AI 建議不穩定**：Gemini 單次呼叫要 27–100 秒以上、偶爾回 503；部署後能到達 API，但最終版本尚未成功完整跑完一次（見 `AI_LOG.md` D-8）。失敗時頁面會顯示原因，不會存下殘缺的內容。
+- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到統計摘要（真實貼文只有個位數），報告頁已標明僅供參考。預設模型 `gemini-3.1-flash-lite`、thinking 設為 minimal，單次約 2–5 秒；偶爾會遇到 Google 回 503，CLI 會自動重試，網頁按鈕則顯示原因。回應沒有正常結束或太短時不會存檔。
 - 若 Threads 改版（頁面結構、內嵌 JSON、登入牆行為），爬蟲需要跟著調整。
 
 ## 未做項目
