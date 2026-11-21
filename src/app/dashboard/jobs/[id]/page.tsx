@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { generateAdviceAction } from "@/app/dashboard/actions";
 import { llmEnabled } from "@/lib/llm";
+import AdviceText from "@/components/AdviceText";
 import ReportView from "@/components/report/ReportView";
 import { UUID_RE } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -75,7 +76,7 @@ export default async function JobReportPage({
                 以下內容由 AI（Gemini）依<b>僅真實資料</b>的統計摘要產生，可能有誤，樣本很少時僅供參考；不含模擬（mock）資料。
               </p>
               {summary.llm_advice ? (
-                <div className="whitespace-pre-wrap">{summary.llm_advice}</div>
+                <AdviceText text={summary.llm_advice} />
               ) : (
                 <p className="opacity-70">尚未產生。</p>
               )}

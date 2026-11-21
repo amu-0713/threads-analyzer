@@ -86,7 +86,13 @@ def test_advice_stores_only_complete_answers():
 
 def test_advice_prompt_is_real_only_aggregates():
     from src.pipeline.advice import build_prompt
-    summary = {"metrics": {"real": {"n_real": 5, "avg": {"likes": 1}, "keywords": [{"word": "a"}] * 20},
-                           "all": {"n_mock": 22}}, "group_analysis": {}, "insights": {"real": [{"text": "t"}]}}
-    p = build_prompt("acct", summary)
-    assert '"real_posts": 5' in p and "n_mock" not in p and "@acct" in p and p.count('"word"') == 8
+    rows = [dict(source="real", views=1000 * (i + 1), likes=10 * (i + 1) + i, replies=i, reposts=0, quotes=0, char_count=20 * (i + 1),
+                 post_type="純文字", posted_at=f"2026-11-0{i + 1}T1{i}:00:00+00:00") for i in range(5)]
+    rows.append(dict(source="mock", views=10, likes=99999, replies=0, reposts=0, quotes=0, char_count=5, post_type="含連結", posted_at="2026-11-01T00:00:00+00:00"))
+    summary = {"metrics": {"real": {"keywords": [{"word": "a"}] * 20}}, "group_analysis": {}, "insights": {"real": [{"text": "p=0.03 顯著"}]}}
+    p = build_prompt("acct", summary, rows)
+    assert '"真實貼文數": 5' in p and "99999" not in p and "@acct" in p and p.count('"a"') == 8
+    assert "顯著" not in p.split("\n\n", 1)[1]  # stored inferential insight text is no longer sent
+    import re
+    assert "%" in p and not re.search(r"\b0\.\d{3,}", p.split("\n\n", 1)[1])  # percentages, no 0.0359-style fractions
+    assert '"中位數"' in p and p.index("中位數") < p.index("平均數")

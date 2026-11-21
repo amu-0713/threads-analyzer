@@ -6,7 +6,7 @@
 
 Needs LLM_API_KEY in .env (Gemini API key; LLM_MODEL optionally overrides the model) plus the usual
 SUPABASE_* values. The prompt mirrors buildPrompt() in src/lib/llm.ts (the dashboard's "regenerate" button):
-real-only statistics, aggregates only, no raw post text. Nothing is stored unless the answer ends normally.
+real-only statistics (medians first, rates as percentages), aggregates only, no raw post text. Nothing is stored unless the answer ends normally.
 """
 
 from __future__ import annotations
@@ -16,7 +16,10 @@ import json
 import logging
 import os
 import sys
+import statistics
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -24,6 +27,7 @@ from . import config
 from .db import Db
 
 log = logging.getLogger("pipeline.advice")
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 # Fastest lightweight text model measured through the API's own model list (2026-11-21); override with LLM_MODEL.
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
@@ -35,33 +39,93 @@ class AdviceError(RuntimeError):
     pass
 
 
-def build_prompt(username: str, summary: dict) -> str:
-    m = (summary.get("metrics") or {}).get("real") or {}
-    g = (summary.get("group_analysis") or {}).get("real") or {}
-    data = {
-        "account": f"@{username}",
-        "real_posts": m.get("n_real"),
-        "averages": m.get("avg"),
-        "avg_interaction_rate": m.get("avg_interaction_rate"),
-        "avg_like_rate": m.get("avg_like_rate"),
-        "avg_reply_rate": m.get("avg_reply_rate"),
-        "post_types": m.get("post_types"),
-        "length_vs_interaction": m.get("length_vs_interaction"),
-        "top_keywords": (m.get("keywords") or [])[:8],
-        "group_counts": g.get("counts"),
-        "group_profiles": {k: {"n_members": v.get("n_members"), "profile": v.get("profile_of_representatives")}
-                           for k, v in (g.get("groups") or {}).items()},
-        "hypothesis_checks": [i.get("text") for i in ((summary.get("insights") or {}).get("real") or [])],
+def _median(xs: list[float]) -> float | None:
+    return statistics.median(xs) if xs else None
+
+
+def _mean(xs: list[float]) -> float | None:
+    return sum(xs) / len(xs) if xs else None
+
+
+def _pct(x: float | None) -> str | None:  # rates as percentages with 2 decimals ("3.59%")
+    return None if x is None else f"{x * 100:.2f}%"
+
+
+def _num(x: float | None, d: int = 0) -> float | int | None:
+    if x is None:
+        return None
+    v = float(f"{x:.{d}f}")
+    return int(v) if v == int(v) else v  # same as JS: 32.0 -> 32
+
+
+SLOTS = [("凌晨 00–05", 0, 5), ("上午 06–11", 6, 11), ("下午 12–17", 12, 17), ("晚間 18–23", 18, 23)]
+BINS = [("50 字以內", 0, 50), ("51–150 字", 51, 150), ("151–300 字", 151, 300), ("300 字以上", 301, 10**9)]
+
+
+def advice_data(username: str, summary: dict, posts: list[dict]) -> dict:
+    """Everything the model sees, from the account's REAL posts; medians first, every rate a percentage.
+    Mirrors adviceData() in src/lib/llm.ts (the dashboard's regenerate button) — keep the two in sync."""
+    real = [p for p in posts if p.get("source") == "real" and p.get("views")]
+    ir = lambda p: (p["likes"] + p["replies"] + p["reposts"] + p["quotes"]) / p["views"]  # noqa: E731
+    lr = lambda p: p["likes"] / p["views"]  # noqa: E731
+    rr = lambda p: p["replies"] / p["views"]  # noqa: E731
+    col = lambda f, agg: agg([f(p) for p in real])  # noqa: E731
+    hour = lambda p: datetime.fromisoformat(p["posted_at"].replace("Z", "+00:00")).astimezone(TAIPEI).hour  # noqa: E731
+    g = (summary.get("group_analysis") or {}).get("real")
+    share = lambda x: None if x is None else f"{round(x * 100)}%"  # noqa: E731
+    out: dict = {
+        "帳號": f"@{username}",
+        "真實貼文數": len(real),
+        "說明": "中位數是主要參考；平均數容易被單一爆文拉高。所有比率皆為百分比。",
+        "中位數": {
+            "觀看": _num(col(lambda p: p["views"], _median)), "讚": _num(col(lambda p: p["likes"], _median), 1),
+            "回覆": _num(col(lambda p: p["replies"], _median), 1), "轉發": _num(col(lambda p: p["reposts"], _median), 1),
+            "字數": _num(col(lambda p: p["char_count"], _median)),
+            "互動率": _pct(col(ir, _median)), "按讚率": _pct(col(lr, _median)), "回覆率": _pct(col(rr, _median)),
+        },
+        "平均數": {
+            "觀看": _num(col(lambda p: p["views"], _mean)), "讚": _num(col(lambda p: p["likes"], _mean), 1),
+            "回覆": _num(col(lambda p: p["replies"], _mean), 1), "轉發": _num(col(lambda p: p["reposts"], _mean), 1),
+            "互動率": _pct(col(ir, _mean)), "按讚率": _pct(col(lr, _mean)), "回覆率": _pct(col(rr, _mean)),
+        },
     }
+    types = list(dict.fromkeys(p.get("post_type") or "未分類" for p in real))
+    out["貼文類型"] = [{"類型": t, "篇數": len(ps), "互動率中位數": _pct(_median([ir(p) for p in ps]))}
+                       for t in types for ps in [[p for p in real if (p.get("post_type") or "未分類") == t]]]
+    out["字數區間"] = [{"區間": label, "篇數": len(ps), "互動率中位數": _pct(_median([ir(p) for p in ps]))}
+                       for label, lo, hi in BINS for ps in [[p for p in real if lo <= p["char_count"] <= hi]] if ps]
+    out["發文時段"] = [{"時段": label, "篇數": len(ps), "互動率中位數": _pct(_median([ir(p) for p in ps]))}
+                       for label, lo, hi in SLOTS for ps in [[p for p in real if p.get("posted_at") and lo <= hour(p) <= hi]] if ps]
+    kw = ((summary.get("metrics") or {}).get("real") or {}).get("keywords")
+    if kw is not None:
+        out["常見關鍵字"] = [k["word"] for k in kw[:8]]
+    if g:
+        out["分組篇數"] = g.get("counts")
+        groups = {}
+        for k, v in (g.get("groups") or {}).items():
+            pr = v.get("profile_of_representatives")
+            groups[k] = pr and {
+                "代表貼文數": pr.get("n"), "平均字數": _num(pr.get("avg_char_count")), "平均按讚率": _pct(pr.get("avg_like_rate")),
+                "平均回覆率": _pct(pr.get("avg_reply_rate")), "常見關鍵字": [w["word"] for w in (pr.get("keywords") or [])[:5]],
+                "提問句占比": share(pr.get("question_share")), "晚間占比": share(pr.get("evening_share")), "含連結占比": share(pr.get("link_share")),
+            }
+        out["各組代表貼文特徵"] = groups
+    return out
+
+
+def build_prompt(username: str, summary: dict, posts: list[dict]) -> str:
     return "\n".join([
         "你是社群媒體數據分析顧問。以下是某個 Threads 帳號「僅真實貼文」的統計摘要（JSON）。",
         "請用繁體中文，依據資料給 3–5 點具體、可執行的內容策略建議。",
         "規則：只能引用資料中有的數字與現象；樣本很少（真實貼文只有個位數）時，必須明講結論僅供參考、不可過度推論；",
         "不要編造資料中沒有的事實；不要提到你看不到的貼文內容；每點建議一句話說明依據。",
         "直接列出建議，不要自我介紹或寒暄。",
-        "樣本只有個位數，不可使用「顯著」「明顯優於」等統計推論用語；平均值可能被單一貼文的極端值拉高時要提醒。",
+        "樣本只有個位數，不可使用「顯著」「明顯優於」等統計推論用語。",
+        "引用數字時優先使用中位數；平均數容易被單一爆文拉高，若引用平均數要註明。",
+        "所有比率一律用百分比表示（例如 3.59%），不要輸出 0.0359 這樣的小數。",
+        "輸出純文字，不要使用任何 Markdown 符號（不要用 **、#、*、`）；每點以「1.」「2.」編號開頭，各佔一段。",
         "",
-        json.dumps(data, ensure_ascii=False),
+        json.dumps(advice_data(username, summary, posts), ensure_ascii=False),
     ])
 
 
@@ -116,7 +180,9 @@ def advise_job(db: Db, job: dict, key: str, model: str, dry_run: bool = False) -
     rows = db.select("job_summaries", {"job_id": f"eq.{job['id']}", "select": "metrics,group_analysis,insights"})
     if not rows:
         raise AdviceError("job has no summary yet (run the pipeline first)")
-    text = generate(build_prompt(job["username"], rows[0]), key, model)
+    posts = db.select("posts", {"job_id": f"eq.{job['id']}", "source": "eq.real",
+                                "select": "source,views,likes,replies,reposts,quotes,char_count,post_type,posted_at"})
+    text = generate(build_prompt(job["username"], rows[0], posts), key, model)
     if not dry_run:
         db.update("job_summaries", {"job_id": f"eq.{job['id']}"}, {"llm_advice": text})
     return text

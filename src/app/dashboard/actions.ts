@@ -70,10 +70,15 @@ export async function generateAdviceAction(formData: FormData) {
   const { data: job } = await supabase.from("jobs").select("username").eq("id", id).maybeSingle();
   const { data: summary } = await supabase.from("job_summaries").select("metrics, group_analysis, insights").eq("job_id", id).maybeSingle();
   if (!job || !summary) to({ advice_error: "找不到分析結果" });
+  const { data: posts } = await supabase
+    .from("posts")
+    .select("source, views, likes, replies, reposts, quotes, char_count, post_type, posted_at")
+    .eq("job_id", id)
+    .eq("source", "real");
 
   let advice: string;
   try {
-    advice = await generateAdvice(buildPrompt(job!.username, summary!));
+    advice = await generateAdvice(buildPrompt(job!.username, summary!, posts ?? []));
   } catch (e) {
     to({ advice_error: e instanceof Error ? e.message : "產生失敗" });
   }
