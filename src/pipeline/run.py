@@ -1,0 +1,142 @@
+"""Pipeline CLI.
+
+    python -m src.pipeline.run --pending            # every job with status 'pending'
+    python -m src.pipeline.run --job <job-id>       # one job (re-runnable)
+
+Reads/writes Supabase with the service_role key from .env. Logs go to logs/.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+import time
+from datetime import datetime
+
+from . import config
+from .db import Db, now_iso
+from .features import text_features
+from .scraper import ScrapeError, ThreadsScraper, to_taipei_iso
+
+log = logging.getLogger("pipeline")
+
+# Fields we report coverage for after each scrape.
+COVERAGE_FIELDS = ["posted_at", "text", "views", "likes", "replies", "reposts", "quotes", "post_url"]
+
+
+def setup_logging() -> None:
+    config.LOG_DIR.mkdir(exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per request is just noise
+    for h in (
+        logging.FileHandler(config.LOG_DIR / f"pipeline-{datetime.now():%Y%m%d}.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ):
+        h.setFormatter(fmt)
+        root.addHandler(h)
+
+
+def build_post_row(job_id: str, rec: dict) -> dict:
+    text = rec.get("text") or ""
+    return {
+        "job_id": job_id,
+        "post_url": rec["post_url"],
+        "posted_at": to_taipei_iso(rec.get("taken_at")),
+        "text": text,
+        "views": rec.get("views"),
+        "views_rounded": bool(rec.get("views_rounded")),
+        "likes": rec.get("likes") or 0,
+        "replies": rec.get("replies") or 0,
+        "reposts": rec.get("reposts") or 0,
+        "quotes": rec.get("quotes") or 0,
+        **text_features(text),
+        "source": "real",
+    }
+
+
+def coverage(rows: list[dict]) -> dict:
+    n = len(rows)
+    return {
+        f: {"count": sum(1 for r in rows if r.get(f) not in (None, "")), "total": n,
+            "pct": round(100 * sum(1 for r in rows if r.get(f) not in (None, "")) / n, 1) if n else 0.0}
+        for f in COVERAGE_FIELDS
+    }
+
+
+def scrape_job(scraper: ThreadsScraper, job: dict) -> list[dict]:
+    username = job["username"]
+    profile = scraper.profile_posts(username)
+    if not profile:
+        raise ScrapeError(f"no posts found for @{username} (account missing/private, or login wall)")
+    records = []
+    for i, (code, prof_rec) in enumerate(sorted(profile.items(), key=lambda kv: -(kv[1].get("taken_at") or 0)), 1):
+        rec = scraper.post_page(username, code, fallback=prof_rec)
+        log.info("[%d/%d] %s likes=%s replies=%s views=%s%s", i, len(profile), code, rec.get("likes"),
+                 rec.get("replies"), rec.get("views"), "~" if rec.get("views_rounded") else "")
+        records.append(rec)
+    return records
+
+
+def process_job(db: Db, scraper: ThreadsScraper, job: dict) -> None:
+    job_id, username = job["id"], job["username"]
+    log.info("=== job %s @%s ===", job_id, username)
+    t0 = time.time()
+    db.set_job(job_id, "scraping", error=None, finished_at=None)
+    try:
+        records = scrape_job(scraper, job)
+        rows = [build_post_row(job_id, r) for r in records]
+        db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.mock"})  # reruns start from real data only
+        db.upsert("posts", rows, on_conflict="job_id,post_url")
+        # a rerun replaces the real set: drop real rows that no longer show up
+        keep = ",".join(f'"{r["post_url"]}"' for r in rows)
+        db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.real", "post_url": f"not.in.({keep})"})
+        cov = coverage(rows)
+        (config.LOG_DIR / f"job_{job_id}_coverage.json").write_text(
+            json.dumps({"username": username, "real_posts": len(rows), "coverage": cov, "scraper": scraper.stats},
+                       ensure_ascii=False, indent=2), encoding="utf-8")
+        log.info("scraped %d real posts; coverage %s", len(rows),
+                 {k: f"{v['pct']}%" for k, v in cov.items()})
+        db.set_job(job_id, "done", post_count=db.count_posts(job_id), finished_at=now_iso(), error=None)
+    except Exception as e:  # noqa: BLE001 - any failure must end up on the job row
+        log.exception("job %s failed", job_id)
+        db.set_job(job_id, "failed", error=str(e)[:500], finished_at=now_iso())
+    log.info("job %s finished in %.0fs", job_id, time.time() - t0)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="python -m src.pipeline.run", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--pending", action="store_true", help="process every pending job")
+    g.add_argument("--job", metavar="ID", action="append", help="process a job by id (repeatable)")
+    ap.add_argument("--headed", action="store_true", help="show the browser window (default: headless)")
+    args = ap.parse_args(argv)
+    setup_logging()
+
+    db = Db()
+    if args.job:
+        jobs = []
+        for job_id in args.job:
+            job = db.get_job(job_id)
+            if not job:
+                log.error("job %s not found", job_id)
+                return 2
+            jobs.append(job)
+    else:
+        jobs = db.pending_jobs()
+    if not jobs:
+        log.info("nothing to do")
+        return 0
+
+    with ThreadsScraper(headless=not args.headed) as scraper:
+        for job in jobs:
+            process_job(db, scraper, job)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
