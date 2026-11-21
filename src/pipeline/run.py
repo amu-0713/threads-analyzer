@@ -18,6 +18,7 @@ from datetime import datetime
 from . import config
 from .db import Db, now_iso
 from .features import text_features
+from .mock import generate_mock
 from .scraper import ScrapeError, ThreadsScraper, to_taipei_iso
 
 log = logging.getLogger("pipeline")
@@ -81,7 +82,7 @@ def scrape_job(scraper: ThreadsScraper, job: dict) -> list[dict]:
     return records
 
 
-def process_job(db: Db, scraper: ThreadsScraper, job: dict) -> None:
+def process_job(db: Db, scraper: ThreadsScraper, job: dict, mock_to: int = 0) -> None:
     job_id, username = job["id"], job["username"]
     log.info("=== job %s @%s ===", job_id, username)
     t0 = time.time()
@@ -100,6 +101,10 @@ def process_job(db: Db, scraper: ThreadsScraper, job: dict) -> None:
                        ensure_ascii=False, indent=2), encoding="utf-8")
         log.info("scraped %d real posts; coverage %s", len(rows),
                  {k: f"{v['pct']}%" for k, v in cov.items()})
+        if mock_to and len(rows) < mock_to:
+            mock_rows = generate_mock(job_id, username, rows, target=mock_to)
+            db.upsert("posts", mock_rows, on_conflict="job_id,post_url")
+            log.info("added %d mock posts (real %d + mock %d = %d)", len(mock_rows), len(rows), len(mock_rows), mock_to)
         db.set_job(job_id, "done", post_count=db.count_posts(job_id), finished_at=now_iso(), error=None)
     except Exception as e:  # noqa: BLE001 - any failure must end up on the job row
         log.exception("job %s failed", job_id)
@@ -113,6 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--pending", action="store_true", help="process every pending job")
     g.add_argument("--job", metavar="ID", action="append", help="process a job by id (repeatable)")
+    ap.add_argument("--mock-to", type=int, default=0, metavar="N",
+                    help="if fewer than N real posts were scraped, top up with source='mock' rows (default: off)")
     ap.add_argument("--headed", action="store_true", help="show the browser window (default: headless)")
     args = ap.parse_args(argv)
     setup_logging()
@@ -134,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with ThreadsScraper(headless=not args.headed) as scraper:
         for job in jobs:
-            process_job(db, scraper, job)
+            process_job(db, scraper, job, mock_to=args.mock_to)
     return 0
 
 
