@@ -7,6 +7,9 @@ import { UUID_RE } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type { Job, Post, Scope, Summary } from "@/lib/types";
 
+// The AI-advice server action runs under this route and can take a while.
+export const maxDuration = 120;
+
 export default async function JobReportPage({
   params,
   searchParams,

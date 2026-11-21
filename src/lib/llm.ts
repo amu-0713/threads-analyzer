@@ -39,6 +39,7 @@ export function buildPrompt(username: string, summary: { metrics: any; group_ana
 export async function generateAdvice(prompt: string): Promise<string> {
   const key = process.env.LLM_API_KEY;
   if (!key) throw new Error("LLM_API_KEY is not set");
+  const started = Date.now();
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${LLM_MODEL}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
@@ -46,7 +47,9 @@ export async function generateAdvice(prompt: string): Promise<string> {
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.4, maxOutputTokens: 1200 },
     }),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(100_000),
+  }).catch((e: Error) => {
+    throw new Error(`Gemini request failed after ${Math.round((Date.now() - started) / 1000)}s: ${e.message}`);
   });
   if (!res.ok) {
     const raw = await res.text();
@@ -56,6 +59,7 @@ export async function generateAdvice(prompt: string): Promise<string> {
     } catch {}
     throw new Error(`Gemini API ${res.status}: ${String(detail).slice(0, 200)}`);
   }
+  console.log(`[llm] ${LLM_MODEL} answered in ${Date.now() - started}ms`);
   const json = await res.json();
   const text: string | undefined = json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
   if (!text?.trim()) throw new Error("Gemini returned no text (blocked or empty response)");
