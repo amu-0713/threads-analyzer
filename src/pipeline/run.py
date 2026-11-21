@@ -17,6 +17,7 @@ from datetime import datetime
 
 from . import config
 from .db import Db, now_iso
+from .analysis import analyze
 from .features import text_features
 from .mock import generate_mock
 from .scraper import ScrapeError, ThreadsScraper, to_taipei_iso
@@ -82,29 +83,57 @@ def scrape_job(scraper: ThreadsScraper, job: dict) -> list[dict]:
     return records
 
 
-def process_job(db: Db, scraper: ThreadsScraper, job: dict, mock_to: int = 0) -> None:
+def run_analysis(db: Db, job_id: str) -> None:
+    """Read the job's posts, compute the summary, write job_summaries and posts.group."""
+    posts = db.select("posts", {"job_id": f"eq.{job_id}", "select": "*", "order": "posted_at.desc"})
+    if not posts:
+        raise RuntimeError("no posts to analyze")
+    res = analyze(posts)
+    db.upsert("job_summaries", [{
+        "job_id": job_id,
+        "metrics": res["metrics"],
+        "top_posts": res["top_posts"],
+        "group_analysis": res["group_analysis"],
+        "insights": res["insights"],
+        "updated_at": now_iso(),
+    }], on_conflict="job_id")
+    for url, group in res["post_groups"].items():
+        db.update("posts", {"job_id": f"eq.{job_id}", "post_url": f"eq.{url}"}, {"group": group})
+    counts = res["group_analysis"]["all"]["counts"]
+    log.info("analysis written: %d posts, groups %s", len(posts), counts)
+
+
+def scrape_stage(db: Db, scraper: ThreadsScraper, job: dict, mock_to: int) -> None:
     job_id, username = job["id"], job["username"]
-    log.info("=== job %s @%s ===", job_id, username)
+    records = scrape_job(scraper, job)
+    rows = [build_post_row(job_id, r) for r in records]
+    db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.mock"})  # reruns start from real data only
+    db.upsert("posts", rows, on_conflict="job_id,post_url")
+    # a rerun replaces the real set: drop real rows that no longer show up
+    keep = ",".join(f'"{r["post_url"]}"' for r in rows)
+    db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.real", "post_url": f"not.in.({keep})"})
+    cov = coverage(rows)
+    (config.LOG_DIR / f"job_{job_id}_coverage.json").write_text(
+        json.dumps({"username": username, "real_posts": len(rows), "coverage": cov, "scraper": scraper.stats},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info("scraped %d real posts; coverage %s", len(rows), {k: f"{v['pct']}%" for k, v in cov.items()})
+    if mock_to and len(rows) < mock_to:
+        mock_rows = generate_mock(job_id, username, rows, target=mock_to)
+        db.upsert("posts", mock_rows, on_conflict="job_id,post_url")
+        log.info("added %d mock posts (real %d + mock %d = %d)", len(mock_rows), len(rows), len(mock_rows), mock_to)
+
+
+def process_job(db: Db, scraper: ThreadsScraper | None, job: dict, mock_to: int = 0) -> None:
+    """pending -> scraping -> analyzing -> done (or failed). scraper=None re-runs only the analysis."""
+    job_id = job["id"]
+    log.info("=== job %s @%s ===", job_id, job["username"])
     t0 = time.time()
-    db.set_job(job_id, "scraping", error=None, finished_at=None)
     try:
-        records = scrape_job(scraper, job)
-        rows = [build_post_row(job_id, r) for r in records]
-        db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.mock"})  # reruns start from real data only
-        db.upsert("posts", rows, on_conflict="job_id,post_url")
-        # a rerun replaces the real set: drop real rows that no longer show up
-        keep = ",".join(f'"{r["post_url"]}"' for r in rows)
-        db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.real", "post_url": f"not.in.({keep})"})
-        cov = coverage(rows)
-        (config.LOG_DIR / f"job_{job_id}_coverage.json").write_text(
-            json.dumps({"username": username, "real_posts": len(rows), "coverage": cov, "scraper": scraper.stats},
-                       ensure_ascii=False, indent=2), encoding="utf-8")
-        log.info("scraped %d real posts; coverage %s", len(rows),
-                 {k: f"{v['pct']}%" for k, v in cov.items()})
-        if mock_to and len(rows) < mock_to:
-            mock_rows = generate_mock(job_id, username, rows, target=mock_to)
-            db.upsert("posts", mock_rows, on_conflict="job_id,post_url")
-            log.info("added %d mock posts (real %d + mock %d = %d)", len(mock_rows), len(rows), len(mock_rows), mock_to)
+        if scraper is not None:
+            db.set_job(job_id, "scraping", error=None, finished_at=None)
+            scrape_stage(db, scraper, job, mock_to)
+        db.set_job(job_id, "analyzing", error=None, finished_at=None)
+        run_analysis(db, job_id)
         db.set_job(job_id, "done", post_count=db.count_posts(job_id), finished_at=now_iso(), error=None)
     except Exception as e:  # noqa: BLE001 - any failure must end up on the job row
         log.exception("job %s failed", job_id)
@@ -120,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--job", metavar="ID", action="append", help="process a job by id (repeatable)")
     ap.add_argument("--mock-to", type=int, default=0, metavar="N",
                     help="if fewer than N real posts were scraped, top up with source='mock' rows (default: off)")
+    ap.add_argument("--analyze-only", action="store_true", help="skip scraping; re-run the analysis on posts already in the DB")
     ap.add_argument("--headed", action="store_true", help="show the browser window (default: headless)")
     args = ap.parse_args(argv)
     setup_logging()
@@ -139,6 +169,10 @@ def main(argv: list[str] | None = None) -> int:
         log.info("nothing to do")
         return 0
 
+    if args.analyze_only:
+        for job in jobs:
+            process_job(db, None, job)
+        return 0
     with ThreadsScraper(headless=not args.headed) as scraper:
         for job in jobs:
             process_job(db, scraper, job, mock_to=args.mock_to)

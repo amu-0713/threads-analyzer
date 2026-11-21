@@ -41,7 +41,12 @@ cp .env.example .env            # 填入 SUPABASE_URL、SUPABASE_SERVICE_ROLE_KE
 
 python -m src.pipeline.run --pending        # 處理所有 pending 任務
 python -m src.pipeline.run --job <job-id>   # 單一任務（可重跑，不會產生重複貼文）
+python -m src.pipeline.run --job <job-id> --mock-to 30   # 真實篇數 < 30 時補 mock 到 30（docs/mock_design.md）
+python -m src.pipeline.run --job <job-id> --analyze-only # 不重爬，只重跑分析
+python -m src.pipeline.validate_mock --job <job-id>      # 分析能否找回 mock 的 3 個規律
 ```
 
 爬蟲規則：不登入、不處理登入牆；每頁間隔 2–3 秒、逾時 30 秒、429/逾時指數退避重試 3 次。
 未登入只拿得到個人頁首屏約 7–9 篇，詳見 `docs/feasibility.md`。Log 在 `logs/`。
+
+分析輸出格式與分組規則見 `docs/analysis.md`。任務流程：`pending → scraping → analyzing → done`（失敗為 `failed`，原因寫在 `jobs.error`）。

@@ -29,7 +29,9 @@ EVENING_LIKE_BOOST = 2.0
 LINK_PENALTY = 0.4
 EVENING_HOURS = range(18, 24)
 
-P_QUESTION, P_LINK, P_HASHTAG, P_MENTION = 0.45, 0.30, 0.20, 0.15
+# Share of mock posts having each trait. Assigned as a balanced design (exact counts, shuffled), not
+# independent coin flips, so a 22-post sample can't end up with e.g. only 4 evening posts by bad luck.
+P_QUESTION, P_EVENING, P_LINK, P_HASHTAG, P_MENTION = 0.45, 0.45, 0.30, 0.20, 0.15
 NOISE_SIGMA = 0.40  # log-normal noise on every rate (kept small so planted effects stay detectable)
 RATE_FLOORS = {"likes": 0.003, "replies": 0.001, "reposts": 0.0005, "quotes": 0.0001}
 WINDOW_DAYS = 60
@@ -62,11 +64,19 @@ def _round_views(v: float) -> tuple[int, bool]:
     return (int(round(v, -3)), True) if v >= 10_000 else (v, False)
 
 
-def _sample_hour(rng: random.Random, real_hours: list[int]) -> int:
-    """Half from the real hour distribution, half uniform over 8-23, so evening/non-evening are both common."""
-    if real_hours and rng.random() < 0.5:
-        return rng.choice(real_hours)
-    return rng.randint(8, 23)
+def _balanced(rng: random.Random, n: int, p: float) -> list[bool]:
+    flags = [True] * round(n * p) + [False] * (n - round(n * p))
+    rng.shuffle(flags)
+    return flags
+
+
+def _sample_hour(rng: random.Random, real_hours: list[int], evening: bool) -> int:
+    """Hour within the requested class: half from the job's real hours of that class, half uniform."""
+    lo, hi = (18, 23) if evening else (8, 17)
+    pool = [h for h in real_hours if lo <= h <= hi]
+    if pool and rng.random() < 0.5:
+        return rng.choice(pool)
+    return rng.randint(lo, hi)
 
 
 def _make_text(rng: random.Random, username: str, target_len: int, question: bool, link: bool,
@@ -107,17 +117,18 @@ def generate_mock(job_id: str, username: str, real_rows: list[dict], target: int
     real_hours = [d.hour for d in real_dt]
     newest = max(real_dt)
 
+    questions, evenings, links = (_balanced(rng, need, p) for p in (P_QUESTION, P_EVENING, P_LINK))
+    hashtags, mentions = (_balanced(rng, need, p) for p in (P_HASHTAG, P_MENTION))
+
     rows = []
     for i in range(need):
-        question, link = rng.random() < P_QUESTION, rng.random() < P_LINK
-        hashtag, mention = rng.random() < P_HASHTAG, rng.random() < P_MENTION
+        question, evening, link, hashtag, mention = questions[i], evenings[i], links[i], hashtags[i], mentions[i]
 
         day = newest - timedelta(days=rng.randint(0, WINDOW_DAYS))
-        hour = _sample_hour(rng, real_hours)
+        hour = _sample_hour(rng, real_hours, evening)
         posted = day.replace(hour=hour, minute=rng.randint(0, 59), second=rng.randint(0, 59), microsecond=0)
         if posted > newest:
             posted -= timedelta(days=1)
-        evening = posted.hour in EVENING_HOURS
 
         views, rounded = _round_views(math.exp(rng.gauss(mu, sd)))
         text = _make_text(rng, username, int(math.exp(rng.gauss(len_mu, len_sd))), question, link, hashtag, mention, i + 1)
