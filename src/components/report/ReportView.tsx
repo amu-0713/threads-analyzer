@@ -219,9 +219,9 @@ export default function ReportView({ summary, posts, scope }: { summary: Summary
       <Section title="三組分類" id="groups">{ga ? <Groups ga={ga} /> : <p className="text-sm opacity-70">沒有分組結果。</p>}</Section>
 
       <Section title="觀察">
-        {scope === "real" ? (
+        {scope === "real" || m.n_mock === 0 ? (  // no mock rows -> all data IS real data: same descriptive-only view
           <>
-            <p className="mb-2 text-xs opacity-70">僅真實資料，只列描述性結果（篇數、中位數、方向）。</p>
+            <p className="mb-2 text-xs opacity-70">{m.n_mock === 0 ? "此任務全部是真實資料，" : "僅真實資料，"}只列描述性結果（篇數、中位數、方向）。</p>
             <ul className="list-disc space-y-1 pl-5 text-sm">{describePatterns(scoped).map((t) => <li key={t}>{t}</li>)}</ul>
             <p className="mt-2 text-xs opacity-70">樣本太小（真實貼文 {m.n_real} 篇），以上只是描述這批貼文的樣子，不能推論到帳號的一般表現。</p>
           </>
