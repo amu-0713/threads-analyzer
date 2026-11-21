@@ -1,7 +1,7 @@
 // Gemini advice generator. Server-side only: the key comes from LLM_API_KEY and never reaches the browser.
 // No path-alias imports here so the file can also be run directly with node for testing.
 
-export const LLM_MODEL = process.env.LLM_MODEL || "gemini-3.8-flash";
+export const LLM_MODEL = process.env.LLM_MODEL || "gemini-3.1-flash-lite";
 
 export function llmEnabled(): boolean {
   return Boolean(process.env.LLM_API_KEY);
@@ -31,6 +31,7 @@ export function buildPrompt(username: string, summary: { metrics: any; group_ana
     "請用繁體中文，依據資料給 3–5 點具體、可執行的內容策略建議。",
     "規則：只能引用資料中有的數字與現象；樣本很少（真實貼文只有個位數）時，必須明講結論僅供參考、不可過度推論；",
     "不要編造資料中沒有的事實；不要提到你看不到的貼文內容；每點建議一句話說明依據。",
+    "直接列出建議，不要自我介紹或寒暄。",
     "",
     JSON.stringify(data),
   ].join("\n");
@@ -45,12 +46,13 @@ async function callGemini(key: string, prompt: string, lowThinking: boolean): Pr
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.4,
-        maxOutputTokens: 8192,
-        // The default "thinking" made one call take 30-80 s; ask for less (retried without if the API rejects it).
-        ...(lowThinking ? { thinkingConfig: { thinkingLevel: "low" } } : {}),
+        maxOutputTokens: 4096,
+        // Measured against the live API (2026-11-21): thinkingLevel "minimal" -> 0 thought tokens, ~2 s per call;
+        // the default thinking took 30-80 s. (thinkingBudget: 0 is rejected by this model family.)
+        ...(lowThinking ? { thinkingConfig: { thinkingLevel: "minimal" } } : {}),
       },
     }),
-    signal: AbortSignal.timeout(100_000),
+    signal: AbortSignal.timeout(60_000),
   }).catch((e: Error) => {
     throw new Error(`Gemini request failed after ${Math.round((Date.now() - started) / 1000)}s: ${e.message}`);
   });

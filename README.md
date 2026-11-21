@@ -24,7 +24,7 @@ PRD 已於 2026-11-21 經零一行銷確認。
 - 報告頁 `/dashboard/jobs/<id>`：總覽指標卡、互動率 Top 5、發文時段圖、文長 vs 互動率散佈圖、關鍵字與 hashtag、貼文類型、三組分類與代表貼文、「全部資料／僅真實資料」切換、mock 貼文明確標示、資料限制提示
 - 匯出：CSV／JSON（含 `source` 欄位，標明 `real` 或 `mock`）
 - 比較頁 `/dashboard/compare`：多個任務並列比較（只用真實資料），並附 4 個帳號的洞察與內容建議（`reports/insights.md`）
-- AI 建議（選用）：Gemini 依「僅真實資料」的統計摘要產生內容建議，標明 AI 產生；沒有 `LLM_API_KEY` 時按鈕停用
+- AI 建議（選用）：Gemini 依「僅真實資料」的統計摘要產生內容建議，標明 AI 產生；可由 CLI 預先產生，報告頁按鈕作為「重新產生」；沒有 `LLM_API_KEY` 時按鈕停用
 
 ## 目錄結構
 
@@ -62,7 +62,7 @@ playwright install chromium     # 雲端沙箱已預裝 /opt/pw-browsers/chromiu
 
 ```bash
 cp .env.example .env.local   # 前端：NEXT_PUBLIC_SUPABASE_URL、NEXT_PUBLIC_SUPABASE_ANON_KEY（選用 LLM_API_KEY）
-cp .env.example .env         # pipeline：SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY
+cp .env.example .env         # pipeline：SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY（預先產生 AI 建議另需 LLM_API_KEY）
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` 會繞過 RLS，**只能放在本機 `.env`**，不可放進前端、Vercel 或 repo。
@@ -86,6 +86,7 @@ python -m src.pipeline.run --job <job-id>                  # 單一任務（可�
 python -m src.pipeline.run --job <job-id> --mock-to 30     # 真實篇數 < 30 時補 mock 到 30
 python -m src.pipeline.run --job <job-id> --analyze-only   # 不重爬，只重跑分析
 python -m src.pipeline.validate_mock --job <job-id>        # 分析能否找回 mock 內寫入的 3 個規律
+python -m src.pipeline.advice --all                         # 預先產生 AI 建議並存入 job_summaries.llm_advice（server 端呼叫 Gemini；--job <id> 指定任務、--dry-run 只印不存）
 python -m src.pipeline.insights_numbers                    # 重現 reports/insights.md 引用的所有數字
 python -m pytest -q tests
 ```

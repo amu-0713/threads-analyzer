@@ -51,3 +51,42 @@ def test_mock_plants_the_three_patterns():
     ln = [r for r in rows if r["url_count"]]
     nln = [r for r in rows if not r["url_count"]]
     assert rate(ln, "likes") < 0.7 * rate(nln, "likes")
+
+
+def _gemini(body, status=200):
+    import httpx
+    calls = []
+
+    def handler(request):
+        import json as _json
+        calls.append(_json.loads(request.content))
+        return httpx.Response(status, json=body)
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), calls
+
+
+GOOD = {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "思考", "thought": True}, {"text": "建議。" * 80}]}}]}
+
+
+def test_advice_stores_only_complete_answers():
+    import pytest
+    from src.pipeline.advice import AdviceError, generate
+    client, calls = _gemini(GOOD)
+    text = generate("p", "k", "m", client)
+    assert text == ("建議。" * 80) and calls[0]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
+    cut = {"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": [{"text": "半句" * 100}]}}]}
+    with pytest.raises(AdviceError, match="MAX_TOKENS"):
+        generate("p", "k", "m", _gemini(cut)[0])
+    short = {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "太短"}]}}]}
+    with pytest.raises(AdviceError, match="too short"):
+        generate("p", "k", "m", _gemini(short)[0])
+    with pytest.raises(AdviceError, match="404"):
+        generate("p", "k", "m", _gemini({"error": {"message": "gone"}}, 404)[0])
+
+
+def test_advice_prompt_is_real_only_aggregates():
+    from src.pipeline.advice import build_prompt
+    summary = {"metrics": {"real": {"n_real": 5, "avg": {"likes": 1}, "keywords": [{"word": "a"}] * 20},
+                           "all": {"n_mock": 22}}, "group_analysis": {}, "insights": {"real": [{"text": "t"}]}}
+    p = build_prompt("acct", summary)
+    assert '"real_posts": 5' in p and "n_mock" not in p and "@acct" in p and p.count('"word"') == 8
