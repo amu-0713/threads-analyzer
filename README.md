@@ -68,4 +68,5 @@ python -m src.pipeline.validate_mock --job <job-id>      # 分析能否找回 mo
 - Framework：Next.js（自動偵測）；`vercel.json` 把 Functions 區域設在東京（`hnd1`），與 Supabase（ap-northeast-1）同區。
 - **只需要兩個環境變數**（Production / Preview / Development 都設）：
   `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`。
+- 選用：`LLM_API_KEY`（Gemini API key，只在 server 端使用）。沒設定時，報告頁的「產生 AI 建議」按鈕會停用。
 - **不可**設定 service_role key：前端只用 anon key + RLS 讀寫；service_role 只給本機 Python pipeline。
