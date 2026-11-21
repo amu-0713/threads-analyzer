@@ -1,6 +1,6 @@
 # Threads Analyzer
 
-Threads 公開帳號的貼文爬取與數據分析工具：輸入帳號 → 本機爬蟲抓取貼文 → 分析 → 在網頁上看報告、比較帳號、匯出資料。
+Threads 公開帳號的貼文爬取與數據分析工具：輸入帳號 → 本機爬蟲抓取貼文（未登入或登入模式）→ 分析 → 在網頁上看報告、比較帳號、匯出資料。
 
 - **線上版**：https://threads-analyzer-ashen.vercel.app
 - **前端**：Next.js 16（App Router、TypeScript、Tailwind、recharts），部署在 Vercel
@@ -11,7 +11,7 @@ Threads 公開帳號的貼文爬取與數據分析工具：輸入帳號 → 本�
 
 demo 帳號請見交件信。
 
-此帳號底下有 5 個分析任務：7eleventw、starbuckstw、dcard.tw、pchome24h（各自只有真實資料），以及補 mock 到 30 篇的 7eleventw 主分析任務。
+此帳號底下有 9 個分析任務：**未登入模式** 5 個（7eleventw、starbuckstw、dcard.tw、pchome24h，各自只有真實資料；以及補 mock 到 30 篇的 7eleventw 主分析任務），**登入模式** 4 個（上述 4 個帳號各 40 篇真實資料，洞察以這 4 個為主）。
 
 ## PRD 確認
 
@@ -20,10 +20,10 @@ PRD 已於 2026-11-21 經零一行銷確認。
 ## 功能
 
 - Email／密碼註冊與登入（Supabase Auth；開啟 Confirm email 時，註冊後要先點信中連結）
-- Dashboard：新增分析（輸入 `@帳號` 或個人頁網址，會正規化成 username）、任務列表、重跑、刪除（有確認）
+- Dashboard：新增分析（輸入 `@帳號` 或個人頁網址，會正規化成 username，並選抓取模式）、任務列表（含模式）、重跑、刪除（有確認）
 - 報告頁 `/dashboard/jobs/<id>`：總覽指標卡、互動率 Top 5、發文時段圖、文長 vs 互動率散佈圖、關鍵字與 hashtag、貼文類型、三組分類與代表貼文、「全部資料／僅真實資料」切換、mock 貼文明確標示、資料限制提示
 - 匯出：CSV／JSON（含 `source` 欄位，標明 `real` 或 `mock`）
-- 比較頁 `/dashboard/compare`：多個任務並列比較（只用真實資料），並附 4 個帳號的洞察與內容建議（`reports/insights.md`）
+- 比較頁 `/dashboard/compare`：多個任務並列比較（只用真實資料，含模式欄；可把未登入與登入的同一帳號並排），並附 4 個帳號的洞察與內容建議（`reports/insights.md`，以登入模式 160 篇為主，未登入結果放附錄對照）
 - AI 建議（選用）：Gemini 依「僅真實資料」的統計摘要產生內容建議，標明 AI 產生；可由 CLI 預先產生，報告頁按鈕作為「重新產生」；沒有 `LLM_API_KEY` 時按鈕停用
 
 ## 目錄結構
@@ -87,19 +87,40 @@ python -m src.pipeline.run --job <job-id> --mock-to 30     # 真實篇數 < 30 �
 python -m src.pipeline.run --job <job-id> --analyze-only   # 不重爬，只重跑分析
 python -m src.pipeline.validate_mock --job <job-id>        # 分析能否找回 mock 內寫入的 3 個規律
 python -m src.pipeline.advice --all                         # 預先產生 AI 建議並存入 job_summaries.llm_advice（server 端呼叫 Gemini；--job <id> 指定任務、--dry-run 只印不存）
-python -m src.pipeline.insights_numbers                    # 重現 reports/insights.md 引用的所有數字
+python -m src.pipeline.insights_numbers --mode login       # 重現 reports/insights.md 引用的所有數字（--mode anonymous：附錄對照用的未登入資料）
 python -m pytest -q tests
 ```
 
 任務狀態：`pending → scraping → analyzing → done`（失敗為 `failed`，原因在 `jobs.error`）。在 dashboard 按「重跑」會把已完成或失敗的任務設回 `pending`，再執行 `--pending` 即可；原本有補 mock 的任務會沿用補到 30 篇。Log 寫在 `logs/`。
 
+### 登入模式（用你自己的 Threads 帳號，在你自己的電腦上）
+
+未登入只拿得到個人頁首屏（5–9 篇）。登入模式改用**你自己的登入工作階段**，個人頁可捲動到 40 篇：
+
+```bash
+python -m src.pipeline.login          # 開有畫面的 Chromium；你手動登入（含二階段驗證），回終端機按 Enter
+python -m src.pipeline.run --login --add 7eleventw starbuckstw dcard.tw pchome24h --as <你的 dashboard email>   # 建立登入模式任務並執行（含分析）
+python -m src.pipeline.advice --all --mode login                # 預先產生 AI 建議
+python -m src.pipeline.insights_numbers --mode login            # 重現洞察引用的數字
+```
+
+- `login` 只儲存 Playwright 的 `storage_state`（cookies 與 local storage）到 `.secrets/threads_state.json`（已加入 `.gitignore`，檔案權限 600）。**程式不會要求、讀取或儲存帳號密碼。**
+- `run --login` 載入該工作階段，個人頁捲動到 40 篇或到底為止，再逐篇開單篇頁取觀看數與互動數（解析方式與未登入相同）；每頁與每次捲動間隔 2–3 秒。
+- **遇到登入失效、被導向登入頁、驗證或頻率限制畫面就停止並提示，不嘗試繞過**；已抓到的貼文會先存下，重跑時整批取代。
+- 任務的模式存在 `jobs.mode`（`anonymous` / `login`）：`--login` 只處理登入模式的任務，不加 `--login` 只處理未登入任務；原本的未登入任務全部保留，作為對照。
+- 失敗後重跑用 `--login --job <任務 id>`（不要再用 `--add`，會建出重複任務）；`--headed` 可以看到瀏覽器；`--limit N` 可改變捲動上限。
+- 登入模式的流程用本機假伺服器測過（捲動、解析、登入失效、驗證畫面、保留部分結果）；實際登入後的頁面由使用者在自己電腦上執行驗證。
+
 ## 資料來源與合法性
 
-- **只讀公開頁、不登入**：用 Playwright 開啟公開的個人頁與單篇貼文頁，讀取頁面內嵌的 JSON（單篇頁的觀看數取自頁面標頭）。**不登入、不使用任何帳密或 cookie，不關閉、移除或繞過登入牆**（偵測到登入牆只記錄，不處理）。每頁間隔 2–3 秒、逾時 30 秒、遇 429／逾時以指數退避重試 3 次。
-- **仍屬條款灰色地帶**：即使是公開頁面，Threads／Meta 的服務條款對自動化蒐集有限制；本專案不主張這是「被允許」的，只是把風險降到最低（低頻率、不登入、不繞過限制、只用於分析展示）。商業或大規模使用前應取得授權。
+本專案有兩種抓取模式，風險不同：
+
+- **未登入模式（預設）**：用 Playwright 開啟公開的個人頁與單篇貼文頁，讀取頁面內嵌的 JSON（單篇頁的觀看數取自頁面標頭）。**不登入、不使用任何帳密或 cookie，不關閉、移除或繞過登入牆**（偵測到登入牆只記錄，不處理）。每頁間隔 2–3 秒、逾時 30 秒、遇 429／逾時以指數退避重試 3 次。
+- **登入模式（出題方 2026-11-21 詢問「可以登入後抓取嗎」之後新增）**：使用**開發者自己的 Instagram／Threads 帳號**，在自己的電腦上登入，程式只保存登入工作階段（見上方「登入模式」）。風險控管：只用自己的帳號、低頻率（每頁與每次捲動 2–3 秒、每個帳號至多 40 篇）、**不存帳密**（只存工作階段檔，已 gitignore、權限 600，不上傳）、遇驗證或限制畫面立即停止、不使用任何反偵測手法；**用完請登出所有裝置並刪除 `.secrets/threads_state.json`**（Instagram／Threads 設定 → 帳號中心 → 密碼與安全性 → 登入的地點）。
+- **兩種模式都仍屬條款灰色地帶**：Threads／Meta 的服務條款對自動化蒐集有限制，登入後以自動化方式存取更是如此，帳號有被限制或停權的風險（這是開發者自己的帳號，風險由開發者承擔）。本專案不主張這是「被允許」的，只是把風險降到最低，且僅用於分析展示。商業或大規模使用前應取得授權。
 - **官方 API 無法完成本題目標**（2026-11-20 讀官方文件查證，細節在 `docs/feasibility.md` 第 7 節）：查詢任意公開帳號的貼文（`/profile_posts`）需要進階存取（App Review），且回傳欄位沒有任何互動數；互動數與觀看數只能由帳號擁有者透過 Insights 取得自己的貼文。
 - **長期合法的方案**：向 Meta 申請 **Meta Content Library**（研究／機構用的官方資料管道）。這是我們認為合適的方向，但申請資格與可取得的欄位本專案沒有實際驗證。
-- 因為未登入只拿得到個人頁首屏，真實貼文每個帳號只有 5–9 篇；不足 30 篇時可用 **mock 資料**補足以展示分析流程（`posts.source='mock'`，全站都有標示，洞察結論不使用），設計與驗證見 `docs/mock_design.md`。
+- 未登入只拿得到個人頁首屏，真實貼文每個帳號只有 5–9 篇；為了展示分析流程，7eleventw 主分析任務用 **mock 資料**補到 30 篇（`posts.source='mock'`，全站都有標示，**洞察結論不使用**），設計與驗證見 `docs/mock_design.md`。登入模式的任務有 40 篇真實資料，不需要 mock。
 
 ## 指標定義
 
@@ -123,7 +144,7 @@ python -m pytest -q tests
 
 ## 資料庫與安全
 
-四張表：`profiles`、`jobs`、`posts`、`job_summaries`，全部啟用 RLS。未登入不可讀任何表；使用者只能建立、讀取、刪除自己的 `jobs`，並把已完成／失敗的任務改回 `pending`（只開放 `status`、`error`、`finished_at` 三欄）；`posts` 與 `job_summaries` 只能讀取（`job_summaries.llm_advice` 例外，擁有者可更新），一律經 `jobs.user_id` 判斷。寫入 `posts`／`job_summaries` 只由本機 pipeline 用 service_role key 進行。
+四張表：`profiles`、`jobs`、`posts`、`job_summaries`，全部啟用 RLS。未登入不可讀任何表；使用者只能建立、讀取、刪除自己的 `jobs`，並把已完成／失敗的任務改回 `pending`（只開放 `status`、`error`、`finished_at` 三欄）；`posts` 與 `job_summaries` 只能讀取（`job_summaries.llm_advice` 例外，擁有者可更新），一律經 `jobs.user_id` 判斷。寫入 `posts`／`job_summaries` 只由本機 pipeline 用 service_role key 進行。`jobs.mode`（`anonymous` / `login`）記錄抓取方式，RLS 不變。
 
 ## 部署（Vercel）
 
@@ -134,7 +155,7 @@ python -m pytest -q tests
 
 ## 已知限制
 
-- **樣本很少**：未登入只拿得到個人頁首屏，每個帳號 5–9 篇、且不是「最近 N 篇」（首屏會夾帶舊的置頂貼文）。百分位、分組與比較都只能當參考，**不能做統計推論**。
+- **樣本有限**：未登入只拿得到個人頁首屏，每個帳號 5–9 篇；登入模式每個帳號 40 篇。兩者都不是「完整歷史」，也不是同一段時間（例如 7eleventw 的 40 篇只涵蓋 5 週，dcard.tw 涵蓋 5 個月），而且個人頁會夾帶舊的置頂貼文。百分位、分組與比較都只能當參考，**不能做統計推論**。
 - **觀看數四捨五入**：單篇頁在觀看數 ≥ 1 萬時只顯示到千位（如「1.5 萬」），以 `views_rounded=true` 標記，介面以「≈」顯示，比率有些微誤差。觀看數取自 DOM（不是 JSON），頁面改版就會失效。
 - **看不到素材**：只有文字，沒有圖片或影片資訊；轉發與引用在 JSON 可分開，DOM 只有合併值。
 - **mock 不代表真實**：mock 只用來驗證分析管線；其中的規律是人為寫入的。
@@ -142,6 +163,8 @@ python -m pytest -q tests
 - **Supabase 的 leaked password protection 未啟用**：這項需要付費方案，目前的安全檢查會因此有一則警告。
 - **註冊需要信箱驗證**（Confirm email 開啟）：Supabase 內建信件服務有寄信限制，展示請用上面的 demo 帳號。
 - **AI 建議由 AI 產生，可能有誤**：Gemini 只看到統計摘要（真實貼文只有個位數），報告頁已標明僅供參考。預設模型 `gemini-3.1-flash-lite`、thinking 設為 minimal，單次約 2–5 秒；偶爾會遇到 Google 回 503，CLI 會自動重試，網頁按鈕則顯示原因。回應沒有正常結束或太短時不會存檔。
+- **登入模式依賴使用者的工作階段**：工作階段過期、帳號被要求驗證或被限制時，爬取會停止；`storage_state` 檔等同登入狀態，必須自行妥善保管並在用完後刪除。
+- **洞察裡的「邀請型／規則寫滿型」是人工分類**，在看過資料之後才判讀，屬於探索性分析（見 `reports/insights.md` 附錄 C）。
 - 若 Threads 改版（頁面結構、內嵌 JSON、登入牆行為），爬蟲需要跟著調整。
 
 ## 未做項目
