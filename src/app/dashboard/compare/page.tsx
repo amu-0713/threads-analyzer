@@ -1,6 +1,7 @@
 import Link from "next/link";
 import CompareTable from "@/components/report/CompareTable";
 import { UUID_RE } from "@/lib/format";
+import { insightsHtml } from "@/lib/insights";
 import { createClient } from "@/lib/supabase/server";
 import type { Job, Summary } from "@/lib/types";
 
@@ -26,6 +27,8 @@ export default async function ComparePage({
     ? await supabase.from("job_summaries").select("*").in("job_id", chosen.map((j) => j.id)).returns<Summary[]>()
     : { data: [] as Summary[] };
   const summaries = Object.fromEntries((sums ?? []).map((s) => [s.job_id, s]));
+
+  const insights = insightsHtml();
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8">
@@ -62,6 +65,17 @@ export default async function ComparePage({
           <CompareTable jobs={chosen} summaries={summaries} />
         )}
       </section>
+
+      {insights && (
+        <section className="mt-12 border-t border-current/20 pt-8" id="insights">
+          <h2 className="mb-1 text-xl font-bold">洞察與內容建議</h2>
+          <p className="mb-4 text-sm opacity-70">
+            依 4 個帳號共 27 篇真實貼文整理（不含 mock）。樣本很小，以下是待驗證的假設，不是統計結論。
+            完整檔案：<code>reports/insights.md</code>
+          </p>
+          <article className="md-body" dangerouslySetInnerHTML={{ __html: insights }} />
+        </section>
+      )}
     </main>
   );
 }
