@@ -45,7 +45,7 @@ export async function generateAdvice(prompt: string): Promise<string> {
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 1200 },
+      generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },
     }),
     signal: AbortSignal.timeout(100_000),
   }).catch((e: Error) => {
@@ -59,9 +59,17 @@ export async function generateAdvice(prompt: string): Promise<string> {
     } catch {}
     throw new Error(`Gemini API ${res.status}: ${String(detail).slice(0, 200)}`);
   }
-  console.log(`[llm] ${LLM_MODEL} answered in ${Date.now() - started}ms`);
   const json = await res.json();
-  const text: string | undefined = json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
-  if (!text?.trim()) throw new Error("Gemini returned no text (blocked or empty response)");
+  const cand = json?.candidates?.[0];
+  const finish: string | undefined = cand?.finishReason;
+  // keep only answer parts (thinking parts are flagged `thought`)
+  const text: string | undefined = cand?.content?.parts
+    ?.filter((p: { thought?: boolean }) => !p.thought)
+    .map((p: { text?: string }) => p.text ?? "")
+    .join("");
+  console.log(`[llm] ${LLM_MODEL} answered in ${Date.now() - started}ms finishReason=${finish} chars=${text?.length ?? 0} usage=${JSON.stringify(json?.usageMetadata ?? {})}`);
+  if (!text?.trim()) throw new Error(`Gemini returned no text (finishReason=${finish ?? "none"})`);
+  // never store a cut-off answer
+  if (finish && finish !== "STOP") throw new Error(`Gemini answer was cut off (finishReason=${finish}); try again`);
   return text.trim();
 }
