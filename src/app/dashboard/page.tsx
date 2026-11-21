@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 import JobList from "@/components/JobList";
 import type { Job } from "@/lib/types";
 import NewJobForm from "@/components/NewJobForm";
@@ -37,7 +38,10 @@ export default async function DashboardPage({
       </section>
 
       <section className="mt-8">
-        <h2 className="mb-2 font-semibold">任務列表</h2>
+        <div className="mb-2 flex items-baseline justify-between">
+          <h2 className="font-semibold">任務列表</h2>
+          <Link href="/dashboard/compare" className="text-sm underline">多帳號比較</Link>
+        </div>
         {loadError ? (
           <p className="text-sm text-red-600">載入失敗：{loadError.message}</p>
         ) : (
