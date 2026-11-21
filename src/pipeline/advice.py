@@ -123,6 +123,7 @@ def build_prompt(username: str, summary: dict, posts: list[dict]) -> str:
         "樣本只有個位數，不可使用「顯著」「明顯優於」等統計推論用語。",
         "引用數字時優先使用中位數；平均數容易被單一爆文拉高，若引用平均數要註明。",
         "所有比率一律用百分比表示（例如 3.59%），不要輸出 0.0359 這樣的小數。",
+        "篇數少於 3 篇的字數區間、發文時段、貼文類型或分組，不可作為建議的依據；若要提到，必須註明只有幾篇。",
         "輸出純文字，不要使用任何 Markdown 符號（不要用 **、#、*、`）；每點以「1.」「2.」編號開頭，各佔一段。",
         "",
         json.dumps(advice_data(username, summary, posts), ensure_ascii=False),
