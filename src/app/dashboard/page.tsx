@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import JobList, { type Job } from "@/components/JobList";
+import JobList from "@/components/JobList";
+import type { Job } from "@/lib/types";
 import NewJobForm from "@/components/NewJobForm";
 
 export default async function DashboardPage({

@@ -24,3 +24,32 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Chart palette (categorical slots 1-4, validated for adjacent pairs; slots 1-2 also for scatter) */
+:root {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --chart-grid: rgba(0, 0, 0, 0.12);
+  --chart-text: #52514e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --chart-grid: rgba(255, 255, 255, 0.16);
+    --chart-text: #c3c2b7;
+  }
+}
+
+/* Report tables: comfortable column spacing */
+table.tbl th,
+table.tbl td {
+  padding: 0.4rem 0.5rem;
+}
+table.tbl th {
+  white-space: nowrap;
+}

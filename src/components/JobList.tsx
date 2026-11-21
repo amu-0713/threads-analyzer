@@ -1,12 +1,5 @@
-export type Job = {
-  id: string;
-  username: string;
-  status: "pending" | "scraping" | "analyzing" | "done" | "failed";
-  post_count: number;
-  error: string | null;
-  created_at: string;
-  finished_at: string | null;
-};
+import Link from "next/link";
+import type { Job } from "@/lib/types";
 
 export default function JobList({ jobs }: { jobs: Job[] }) {
   if (jobs.length === 0) {
@@ -25,7 +18,13 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
       <tbody>
         {jobs.map((j) => (
           <tr key={j.id} className="border-b border-current/10">
-            <td className="py-2">@{j.username}</td>
+            <td className="py-2">
+              {j.status === "done" ? (
+                <Link href={`/dashboard/jobs/${j.id}`} className="underline">@{j.username}</Link>
+              ) : (
+                <>@{j.username}</>
+              )}
+            </td>
             <td>{j.status}</td>
             <td>{j.post_count}</td>
             <td>{new Date(j.created_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}</td>

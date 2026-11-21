@@ -207,7 +207,8 @@ def metrics(posts: list[dict]) -> dict:
 def _brief(p: dict) -> dict:
     return {
         "post_url": p["post_url"], "source": p["source"], "posted_at": _dt(p).isoformat(),
-        "text": (p.get("text") or "")[:100], "views": p.get("views"), "likes": p["likes"], "replies": p["replies"],
+        "text": (p.get("text") or "")[:100], "views": p.get("views"), "views_rounded": bool(p.get("views_rounded")),
+        "post_type": p.get("post_type"), "likes": p["likes"], "replies": p["replies"],
         "reposts": p["reposts"], "quotes": p["quotes"], "interaction_rate": _round(inter_rate(p)),
     }
 
