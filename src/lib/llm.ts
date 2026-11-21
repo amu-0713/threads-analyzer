@@ -113,10 +113,18 @@ export async function generateAdvice(prompt: string): Promise<string> {
   const key = process.env.LLM_API_KEY;
   if (!key) throw new Error("LLM_API_KEY is not set");
   const started = Date.now();
-  let res = await callGemini(key, prompt, true);
+  let low = true;
+  let res = await callGemini(key, prompt, low);
   if (res.status === 400) {
     console.log(`[llm] low-thinking request rejected (400): ${(await res.text()).slice(0, 300)}; retrying with defaults`);
-    res = await callGemini(key, prompt, false);
+    low = false;
+    res = await callGemini(key, prompt, low);
+  }
+  // Google answers 503 ("high demand") / 429 now and then: retry twice with a short back-off (~9 s worst case)
+  for (let attempt = 0; attempt < 2 && [429, 500, 502, 503, 504].includes(res.status); attempt++) {
+    console.log(`[llm] Gemini ${res.status}, retry ${attempt + 1}`);
+    await new Promise((r) => setTimeout(r, 3000 * 2 ** attempt));
+    res = await callGemini(key, prompt, low);
   }
   if (!res.ok) {
     const raw = await res.text();
