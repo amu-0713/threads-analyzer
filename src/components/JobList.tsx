@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { deleteJob, rerunJob } from "@/app/dashboard/actions";
+import ConfirmButton from "@/components/ConfirmButton";
 import type { Job } from "@/lib/types";
 
 export default function JobList({ jobs }: { jobs: Job[] }) {
@@ -13,6 +15,7 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
           <th>狀態</th>
           <th>貼文數</th>
           <th>建立時間</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -25,9 +28,23 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
                 <>@{j.username}</>
               )}
             </td>
-            <td>{j.status}</td>
+            <td>{j.status}{j.status === "failed" && j.error ? <div className="max-w-xs text-xs text-red-600">{j.error}</div> : null}</td>
             <td>{j.post_count}</td>
             <td>{new Date(j.created_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}</td>
+            <td className="whitespace-nowrap py-1 text-right">
+              {(j.status === "done" || j.status === "failed") && (
+                <form action={rerunJob} className="inline">
+                  <input type="hidden" name="id" value={j.id} />
+                  <button className="mr-3 underline">重跑</button>
+                </form>
+              )}
+              <form action={deleteJob} className="inline">
+                <input type="hidden" name="id" value={j.id} />
+                <ConfirmButton message={`確定刪除 @${j.username} 的任務？貼文與分析結果會一併刪除，無法復原。`} className="text-red-600 underline">
+                  刪除
+                </ConfirmButton>
+              </form>
+            </td>
           </tr>
         ))}
       </tbody>

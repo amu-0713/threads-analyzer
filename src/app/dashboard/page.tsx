@@ -7,9 +7,9 @@ import NewJobForm from "@/components/NewJobForm";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, notice } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -35,6 +35,7 @@ export default async function DashboardPage({
         <h2 className="mb-2 font-semibold">新增分析</h2>
         <NewJobForm />
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        {notice && <p className="mt-2 text-sm text-green-700">{notice}</p>}
       </section>
 
       <section className="mt-8">

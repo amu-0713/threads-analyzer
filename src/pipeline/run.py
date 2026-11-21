@@ -105,6 +105,9 @@ def run_analysis(db: Db, job_id: str) -> None:
 
 def scrape_stage(db: Db, scraper: ThreadsScraper, job: dict, mock_to: int) -> None:
     job_id, username = job["id"], job["username"]
+    if not mock_to and db.select("posts", {"job_id": f"eq.{job_id}", "source": "eq.mock", "select": "id", "limit": "1"}):
+        mock_to = config.MOCK_TARGET  # a rerun (e.g. from the dashboard) keeps the job's mock top-up
+        log.info("job had mock posts before; keeping the top-up to %d", mock_to)
     records = scrape_job(scraper, job)
     rows = [build_post_row(job_id, r) for r in records]
     db.delete("posts", {"job_id": f"eq.{job_id}", "source": "eq.mock"})  # reruns start from real data only

@@ -59,6 +59,8 @@ python -m src.pipeline.validate_mock --job <job-id>      # 分析能否找回 mo
 爬蟲規則：不登入、不處理登入牆；每頁間隔 2–3 秒、逾時 30 秒、429/逾時指數退避重試 3 次。
 未登入只拿得到個人頁首屏約 7–9 篇，詳見 `docs/feasibility.md`。Log 在 `logs/`。
 
+在 dashboard 按「重跑」會把任務設回 `pending`，之後在本機執行 `--pending` 即可（原本有補 mock 的任務會沿用補到 30 篇）。
+
 分析輸出格式與分組規則見 `docs/analysis.md`。任務流程：`pending → scraping → analyzing → done`（失敗為 `failed`，原因寫在 `jobs.error`）。
 
 ## 部署（Vercel）
