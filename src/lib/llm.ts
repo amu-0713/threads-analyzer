@@ -1,7 +1,7 @@
 // Gemini advice generator. Server-side only: the key comes from LLM_API_KEY and never reaches the browser.
 // No path-alias imports here so the file can also be run directly with node for testing.
 
-export const LLM_MODEL = process.env.LLM_MODEL || "gemini-2.5-flash";
+export const LLM_MODEL = process.env.LLM_MODEL || "gemini-3.8-flash";
 
 export function llmEnabled(): boolean {
   return Boolean(process.env.LLM_API_KEY);
@@ -49,8 +49,12 @@ export async function generateAdvice(prompt: string): Promise<string> {
     signal: AbortSignal.timeout(45_000),
   });
   if (!res.ok) {
-    const detail = (await res.text()).slice(0, 200);
-    throw new Error(`Gemini API ${res.status}: ${detail}`);
+    const raw = await res.text();
+    let detail = raw.slice(0, 200);
+    try {
+      detail = JSON.parse(raw)?.error?.message ?? detail; // Google returns {"error": {"message": ...}}
+    } catch {}
+    throw new Error(`Gemini API ${res.status}: ${String(detail).slice(0, 200)}`);
   }
   const json = await res.json();
   const text: string | undefined = json?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
