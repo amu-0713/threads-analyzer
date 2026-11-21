@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/format";
+import { buildPrompt, generateAdvice, llmEnabled } from "@/lib/llm";
 import { normalizeUsername } from "@/lib/username";
 
 export async function createJob(formData: FormData) {
@@ -56,4 +57,28 @@ export async function deleteJob(formData: FormData) {
   if (!data?.length) back({ error: "找不到這個任務" });
   revalidatePath("/dashboard");
   back({ notice: "已刪除任務" });
+}
+
+/** T12: generate AI advice from the real-only analysis and store it in job_summaries.llm_advice. */
+export async function generateAdviceAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const to = (params: Record<string, string>) => redirect(`/dashboard/jobs/${id}?` + new URLSearchParams(params));
+  if (!UUID_RE.test(id)) back({ error: "無效的任務 ID" });
+  if (!llmEnabled()) to({ advice_error: "尚未設定 LLM_API_KEY" });
+
+  const supabase = await createClient();
+  const { data: job } = await supabase.from("jobs").select("username").eq("id", id).maybeSingle();
+  const { data: summary } = await supabase.from("job_summaries").select("metrics, group_analysis, insights").eq("job_id", id).maybeSingle();
+  if (!job || !summary) to({ advice_error: "找不到分析結果" });
+
+  let advice: string;
+  try {
+    advice = await generateAdvice(buildPrompt(job!.username, summary!));
+  } catch (e) {
+    to({ advice_error: e instanceof Error ? e.message : "產生失敗" });
+  }
+  const { data, error } = await supabase.from("job_summaries").update({ llm_advice: advice! }).eq("job_id", id).select("job_id");
+  if (error || !data?.length) to({ advice_error: error?.message ?? "無法儲存建議" });
+  revalidatePath(`/dashboard/jobs/${id}`);
+  to({});
 }
