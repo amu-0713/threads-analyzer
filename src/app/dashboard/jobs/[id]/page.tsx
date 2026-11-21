@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { generateAdviceAction } from "@/app/dashboard/actions";
 import { llmEnabled } from "@/lib/llm";
+import AdviceButton from "@/components/AdviceButton";
 import AdviceText from "@/components/AdviceText";
 import ReportView from "@/components/report/ReportView";
 import { UUID_RE } from "@/lib/format";
@@ -82,12 +83,7 @@ export default async function JobReportPage({
               )}
               <form action={generateAdviceAction} className="mt-3">
                 <input type="hidden" name="id" value={id} />
-                <button
-                  disabled={!llmEnabled()}
-                  className="rounded bg-foreground px-4 py-2 text-background disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {summary.llm_advice ? "重新產生 AI 建議" : "產生 AI 建議"}
-                </button>
+                <AdviceButton enabled={llmEnabled()} hasAdvice={!!summary.llm_advice} />
                 {!llmEnabled() && <span className="ml-3 text-xs opacity-70">未設定 LLM_API_KEY，此功能停用</span>}
               </form>
               {advice_error && <p className="mt-2 text-red-600">產生失敗：{advice_error}</p>}
