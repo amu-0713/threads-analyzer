@@ -56,8 +56,11 @@ class Db:
         rows = self.select("jobs", {"id": f"eq.{job_id}", "select": "*"})
         return rows[0] if rows else None
 
-    def pending_jobs(self) -> list[dict]:
-        return self.select("jobs", {"status": "eq.pending", "select": "*", "order": "created_at.asc"})
+    def pending_jobs(self, mode: str | None = None) -> list[dict]:
+        params = {"status": "eq.pending", "select": "*", "order": "created_at.asc"}
+        if mode:
+            params["mode"] = f"eq.{mode}"
+        return self.select("jobs", params)
 
     def set_job(self, job_id: str, status: str, **extra) -> None:
         values = {"status": status, **extra}

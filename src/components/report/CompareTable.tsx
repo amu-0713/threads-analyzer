@@ -1,9 +1,10 @@
-import { num, pct } from "@/lib/format";
+import { modeLabel, num, pct } from "@/lib/format";
 import type { Job, Metrics, Summary } from "@/lib/types";
 
 type Row = { label: string; hint?: string; cell: (m: Metrics, s: Summary) => string };
 
 const ROWS: Row[] = [
+  { label: "模式", hint: "未登入＝僅首屏；登入＝自己的工作階段，最多 40 篇", cell: () => "" },
   { label: "真實貼文數", cell: (m) => String(m.n_real) },
   { label: "平均觀看", hint: "≥1 萬為四捨五入值", cell: (m) => num(m.avg.views) },
   { label: "平均讚", cell: (m) => num(m.avg.likes, 1) },
@@ -41,7 +42,7 @@ export default function CompareTable({ jobs, summaries }: { jobs: Job[]; summari
             {jobs.map((j) => (
               <th key={j.id} className="text-right">
                 {jobLabel(j)}
-                <div className="text-xs font-normal opacity-60">{new Date(j.created_at).toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}</div>
+                <div className="text-xs font-normal opacity-60">{new Date(j.created_at).toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}・{modeLabel(j.mode)}</div>
               </th>
             ))}
           </tr>
@@ -58,7 +59,7 @@ export default function CompareTable({ jobs, summaries }: { jobs: Job[]; summari
                 const m = s?.metrics.real;
                 return (
                   <td key={j.id} className="text-right tabular-nums">
-                    {m && s ? r.cell(m, s) : "—"}
+                    {r.label === "模式" ? modeLabel(j.mode) : m && s ? r.cell(m, s) : "—"}
                   </td>
                 );
               })}

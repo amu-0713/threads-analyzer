@@ -16,7 +16,15 @@ PAGE_TIMEOUT_MS = 30_000
 MIN_DELAY_S, MAX_DELAY_S = 2.0, 3.0  # pause between page loads
 MAX_RETRIES = 3  # retries after the first attempt (429 / timeout)
 BACKOFF_BASE_S = 5.0  # 5s, 10s, 20s
+SETTLE_S = 1.0  # let the SSR JSON / header settle after a page loads
 MOCK_TARGET = 30
+
+# Login mode (python -m src.pipeline.run --login): the user's own Threads session, saved by src.pipeline.login
+THREADS_BASE = os.environ.get("THREADS_BASE_URL", "https://www.threads.com").rstrip("/")
+SECRETS_DIR = ROOT / ".secrets"  # git-ignored
+STATE_PATH = Path(os.environ.get("THREADS_STATE", str(SECRETS_DIR / "threads_state.json")))
+LOGIN_POST_LIMIT = 40  # scroll the profile until this many posts (or the end of the feed)
+MAX_SCROLLS = 60
 
 
 def load_env() -> None:

@@ -195,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--job", action="append", metavar="ID", help="job id (repeatable)")
     g.add_argument("--all", action="store_true", help="every finished job with a summary")
+    ap.add_argument("--mode", choices=["anonymous", "login"], help="with --all: only jobs of this scraping mode")
     ap.add_argument("--model", help=f"default: $LLM_MODEL or {DEFAULT_MODEL}")
     ap.add_argument("--dry-run", action="store_true", help="print the advice, do not store it")
     args = ap.parse_args(argv)
@@ -208,7 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     model = args.model or os.environ.get("LLM_MODEL") or DEFAULT_MODEL
 
     db = Db()
-    jobs = db.select("jobs", {"status": "eq.done", "select": "id,username", "order": "created_at"}) if args.all else \
+    flt = {"status": "eq.done", "select": "id,username,mode", "order": "created_at", **({"mode": f"eq.{args.mode}"} if args.mode else {})}
+    jobs = db.select("jobs", flt) if args.all else \
         [j for i in args.job if (j := db.get_job(i))]
     if not jobs:
         log.error("no jobs to process")

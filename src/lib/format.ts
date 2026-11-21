@@ -20,3 +20,8 @@ export function interactionRate(p: { views: number | null; likes: number; replie
 export function dateTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "—";
 }
+
+/** How a job was scraped: logged out (first screen only) or with the owner's own Threads session. */
+export function modeLabel(mode: string | null | undefined): string {
+  return mode === "login" ? "登入模式" : "未登入";
+}

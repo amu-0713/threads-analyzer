@@ -2,9 +2,12 @@ export type Scope = "all" | "real";
 export type Source = "real" | "mock";
 export type GroupName = "低迷型" | "討論型" | "共鳴型";
 
+export type JobMode = "anonymous" | "login";
+
 export type Job = {
   id: string;
   username: string;
+  mode: JobMode;
   status: "pending" | "scraping" | "analyzing" | "done" | "failed";
   post_count: number;
   error: string | null;

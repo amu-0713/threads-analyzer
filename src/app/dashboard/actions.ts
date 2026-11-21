@@ -18,7 +18,8 @@ export async function createJob(formData: FormData) {
 
   const supabase = await createClient();
   // user_id defaults to auth.uid() in the DB; RLS rejects anything else.
-  const { error } = await supabase.from("jobs").insert({ username });
+  const mode = formData.get("mode") === "login" ? "login" : "anonymous";
+  const { error } = await supabase.from("jobs").insert({ username, mode });
   if (error) {
     redirect("/dashboard?" + new URLSearchParams({ error: error.message }));
   }

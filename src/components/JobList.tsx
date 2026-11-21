@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { deleteJob, rerunJob } from "@/app/dashboard/actions";
 import ConfirmButton from "@/components/ConfirmButton";
+import { modeLabel } from "@/lib/format";
 import type { Job } from "@/lib/types";
 
 export default function JobList({ jobs }: { jobs: Job[] }) {
@@ -13,6 +14,7 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
       <thead>
         <tr className="border-b border-current/20">
           <th className="py-2">帳號</th>
+          <th>模式</th>
           <th>狀態</th>
           <th>貼文數</th>
           <th>建立時間</th>
@@ -29,6 +31,7 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
                 <>@{j.username}</>
               )}
             </td>
+            <td>{modeLabel(j.mode)}</td>
             <td>{j.status}{j.status === "failed" && j.error ? <div className="max-w-xs text-xs text-red-600">{j.error}</div> : null}</td>
             <td>{j.post_count}</td>
             <td>{new Date(j.created_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}</td>

@@ -3,7 +3,7 @@ import LengthScatter, { type Pt } from "@/components/charts/LengthScatter";
 import TimeSlotChart from "@/components/charts/TimeSlotChart";
 import { dateTime, interactionRate, num, pct, views } from "@/lib/format";
 import { accountNotes, describePatterns } from "@/lib/observations";
-import type { BriefPost, GroupAnalysis, GroupName, Metrics, Post, Profile, Scope, Summary } from "@/lib/types";
+import type { BriefPost, GroupAnalysis, GroupName, JobMode, Metrics, Post, Profile, Scope, Summary } from "@/lib/types";
 
 const GROUP_INFO: Record<GroupName, string> = {
   低迷型: "按讚率與回覆率的帳號內百分位都低於 0.5",
@@ -47,15 +47,22 @@ function Snippet({ p }: { p: { text: string | null; post_url: string; source: "r
   );
 }
 
-export function LimitsNotice({ metrics, scope }: { metrics: Metrics; scope: Scope }) {
+export function LimitsNotice({ metrics, scope, mode }: { metrics: Metrics; scope: Scope; mode: JobMode }) {
   return (
     <aside className="mt-6 rounded border border-current/30 bg-current/5 p-4 text-sm">
       <div className="font-semibold">資料限制</div>
       <ul className="mt-2 list-disc space-y-1 pl-5">
-        <li>
-          真實貼文只有 <b>{metrics.n_real}</b> 篇：未登入的 Threads 只提供個人頁首屏（約 5–9 篇），本工具不登入也不繞過登入牆，
-          所以樣本很少，百分位、分組與比較都只能當參考。
-        </li>
+        {mode === "login" ? (
+          <li>
+            <b>登入模式</b>：這個任務是用資料擁有者<b>自己的 Threads 登入工作階段</b>，在本機捲動個人頁（最多 40 篇）再逐篇開單篇頁取得，
+            真實貼文共 <b>{metrics.n_real}</b> 篇。抓取量仍有上限，而且不是「最近 N 篇」（個人頁可能夾帶較舊的置頂貼文）。
+          </li>
+        ) : (
+          <li>
+            真實貼文只有 <b>{metrics.n_real}</b> 篇：未登入的 Threads 只提供個人頁首屏（約 5–9 篇），本工具在未登入模式下不登入也不繞過登入牆，
+            所以樣本很少，百分位、分組與比較都只能當參考。
+          </li>
+        )}
         <li>觀看數取自單篇頁；≥ 1 萬時 Threads 只顯示到千位（如「1.5 萬」），以 <b>≈</b> 標示，比率有些微誤差。</li>
         {metrics.n_mock > 0 ? (
           <li>
@@ -133,7 +140,7 @@ function Groups({ ga }: { ga: GroupAnalysis }) {
   );
 }
 
-export default function ReportView({ summary, posts, scope }: { summary: Summary; posts: Post[]; scope: Scope }) {
+export default function ReportView({ summary, posts, scope, mode }: { summary: Summary; posts: Post[]; scope: Scope; mode: JobMode }) {
   const m = summary.metrics[scope];
   const top = summary.top_posts[scope] ?? [];
   const ga = summary.group_analysis[scope];
@@ -152,7 +159,7 @@ export default function ReportView({ summary, posts, scope }: { summary: Summary
 
   return (
     <>
-      <LimitsNotice metrics={m} scope={scope} />
+      <LimitsNotice metrics={m} scope={scope} mode={mode} />
 
       <Section title="總覽">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -223,7 +230,7 @@ export default function ReportView({ summary, posts, scope }: { summary: Summary
           <>
             <p className="mb-2 text-xs opacity-70">{m.n_mock === 0 ? "此任務全部是真實資料，" : "僅真實資料，"}只列描述性結果（篇數、中位數、方向）。</p>
             <ul className="list-disc space-y-1 pl-5 text-sm">{describePatterns(scoped).map((t) => <li key={t}>{t}</li>)}</ul>
-            <p className="mt-2 text-xs opacity-70">樣本太小（真實貼文 {m.n_real} 篇），以上只是描述這批貼文的樣子，不能推論到帳號的一般表現。</p>
+            <p className="mt-2 text-xs opacity-70">{m.n_real < 30 ? "樣本太小" : "樣本有限"}（真實貼文 {m.n_real} 篇），以上只是描述這批貼文的樣子，不能推論到帳號的一般表現。</p>
           </>
         ) : (
           <ul className="list-disc space-y-1 pl-5 text-sm">

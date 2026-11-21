@@ -1,6 +1,6 @@
 import Link from "next/link";
 import CompareTable from "@/components/report/CompareTable";
-import { UUID_RE } from "@/lib/format";
+import { UUID_RE, modeLabel } from "@/lib/format";
 import { insightsHtml } from "@/lib/insights";
 import { createClient } from "@/lib/supabase/server";
 import type { Job, Summary } from "@/lib/types";
@@ -48,7 +48,7 @@ export default async function ComparePage({
                   <input type="checkbox" name="id" value={j.id} defaultChecked={selected.includes(j.id)} />
                   @{j.username}
                   <span className="text-xs opacity-60">
-                    {new Date(j.created_at).toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}・{j.post_count} 篇
+                    {new Date(j.created_at).toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}・{modeLabel(j.mode)}・{j.post_count} 篇
                   </span>
                 </label>
               </li>

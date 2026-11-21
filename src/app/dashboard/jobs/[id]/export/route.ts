@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
   const { data: summary } = await supabase.from("job_summaries").select("*").eq("job_id", id).maybeSingle<Summary>();
   const body = {
-    job: { id: job.id, username: job.username, status: job.status },
+    job: { id: job.id, username: job.username, mode: job.mode, status: job.status },
     scope,
     exported_at: new Date().toISOString(),
     counts: { posts: posts?.length ?? 0, real: posts?.filter((p) => p.source === "real").length ?? 0, mock: posts?.filter((p) => p.source === "mock").length ?? 0 },
