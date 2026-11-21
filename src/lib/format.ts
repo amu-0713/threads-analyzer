@@ -18,7 +18,7 @@ export function interactionRate(p: { views: number | null; likes: number; replie
 }
 
 export function dateTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hour12: false }) : "—";
+  return iso ? new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hourCycle: "h23" }) : "—";
 }
 
 /** How a job was scraped: logged out (first screen only) or with the owner's own Threads session. */
