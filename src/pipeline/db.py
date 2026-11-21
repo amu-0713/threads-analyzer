@@ -11,13 +11,17 @@ from .config import supabase_settings
 
 
 class Db:
-    def __init__(self, url: str | None = None, key: str | None = None):
+    def __init__(self, url: str | None = None, key: str | None = None, bearer: str | None = None):
+        """Default: service_role (from .env). With `bearer` (a user's access token) and the anon key as `key`,
+        reads go through RLS as that user: enough for the read-only analysis scripts, no service key needed."""
         if url is None or key is None:
             url, key = supabase_settings()
         headers = {"apikey": key, "Content-Type": "application/json"}
         # Legacy service_role keys are JWTs and also go in Authorization. New-style
         # sb_secret_ keys are not JWTs: they must only be sent in the apikey header.
-        if key.count(".") == 2:
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"
+        elif key.count(".") == 2:
             headers["Authorization"] = f"Bearer {key}"
         self.http = httpx.Client(base_url=f"{url}/rest/v1", headers=headers, timeout=30)
 

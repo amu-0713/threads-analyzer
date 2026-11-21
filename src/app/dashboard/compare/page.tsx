@@ -70,7 +70,7 @@ export default async function ComparePage({
         <section className="mt-12 border-t border-current/20 pt-8" id="insights">
           <h2 className="mb-1 text-xl font-bold">洞察與內容建議</h2>
           <p className="mb-4 text-sm opacity-70">
-            依 4 個帳號共 27 篇真實貼文整理（不含 mock）。樣本很小，以下是待驗證的假設，不是統計結論。
+            依登入模式、4 個帳號各 40 篇（共 160 篇）真實貼文整理，不含 mock；未登入的 27 篇放在附錄對照。仍不能做統計推論，以下是待驗證的假設。
             完整檔案：<code>reports/insights.md</code>
           </p>
           <article className="md-body" dangerouslySetInnerHTML={{ __html: insights }} />

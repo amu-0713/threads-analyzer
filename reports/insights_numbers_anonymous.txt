@@ -1,0 +1,41 @@
+mode=anonymous  posts=27  per account {'7eleventw': 8, 'starbuckstw': 5, 'dcard.tw': 7, 'pchome24h': 7}  (real posts only)
+
+== 1. per account
+7eleventw    n=8 2026-10-16..2026-11-20 | median views 10000, likes 92.5, like rate 0.90%, interaction rate 1.35%, reply rate 0.02%, chars 157 | rounded views 5 | top views 52000 on 11-20 (0 d before newest) | types {'含連結': 2, '純文字': 6}
+starbuckstw  n=5 2026-10-02..2026-10-07 | median views 12000, likes 34.0, like rate 0.14%, interaction rate 0.44%, reply rate 0.05%, chars 28 | rounded views 4 | top views 26000 on 10-07 (0 d before newest) | types {'含 hashtag': 1, '純文字': 4}
+dcard.tw     n=7 2026-06-26..2026-11-20 | median views 2368, likes 8.0, like rate 0.19%, interaction rate 0.29%, reply rate 0.02%, chars 47 | rounded views 1 | top views 710000 on 06-26 (147 d before newest) | types {'純文字': 7}
+pchome24h    n=7 2026-09-10..2026-11-18 | median views 13000, likes 105.0, like rate 0.81%, interaction rate 0.82%, reply rate 0.07%, chars 40 | rounded views 4 | top views 1296000 on 09-10 (68 d before newest) | types {'純文字': 7}
+
+== 2. threads: same account, <=5 min after the previous post = follow-up
+multi-post threads 9; follow-up posts 10; fewer views than the opener 9; views ratio (follow-up / opener) median all 0.22, median of those below 1: 0.19; like rate lower than opener 9
+by account (follow-ups, with fewer views): {'7eleventw': (3, 3), 'dcard.tw': (3, 3), 'pchome24h': (3, 2), 'starbuckstw': (1, 1)}
+exceptions (follow-up >= opener): [('pchome24h', '11-18 11:01', 7.69)]
+
+== 3. hand-coded: short invitation openers vs rule-heavy prize openers (exploratory coding)
+invite: n=3 | median interaction rate 8.07%, median reply rate 4.15%
+   7eleventw    11-20 chars 163 views   52000 interaction  12.53% reply  4.15% = 9.3x the account median | \ 抽 LNGSHOT 親筆簽名專輯 /  LNGSHOT EP [
+   pchome24h    11-12 chars  17 views    1465 interaction   5.39% reply  0.48% = 6.6x the account median | 各位超酷！點愛心會出現我的臉！！！
+   pchome24h    11-18 chars  95 views  100000 interaction   8.07% reply  4.57% = 9.8x the account median | 為了恭喜今日@hypotato_chips 假釋一日 小編決定限時抽
+rule-heavy: n=2 | median interaction rate 0.33%, median reply rate 0.11%
+   7eleventw    10-16 chars 466 views   30000 interaction   0.45% reply  0.18% = 0.3x the account median | 現在到7-ELEVEN購買韓國進口商品，做出專屬於你的韓式創意料理！
+   starbuckstw  10-07 chars 324 views   26000 interaction   0.22% reply  0.05% = 0.5x the account median | 💪☕☁️ 高蛋白雲朵鬍，你喝了嗎？ 分享你的透卡自拍，小編送禮物🎁 
+
+== 4. one feature at a time: pooled median, and direction inside each account (accounts with >=3 posts on both sides)
+short (<=30 chars)   like rate       yes n=  8 median  0.76% | no n= 19  0.22% | higher in 0/0 comparable accounts [7eleve 1/7↑, starbu 3/2↑, dcard. 2/5↑, pchome 2/5↑]
+question (？/?)       reply rate      yes n=  8 median  0.03% | no n= 19  0.05% | higher in 0/1 comparable accounts [7eleve 1/7↑, starbu 2/3↓, dcard. 4/3↓, pchome 1/6↓]
+evening (18-23h)     like rate       yes n= 12 median  0.21% | no n= 15  0.81% | higher in 1/1 comparable accounts [7eleve 3/5↑, starbu 1/4↓, dcard. 6/1↓, pchome 2/5↓]
+has a link           interaction rate yes n=  2 median  1.27% | no n= 25  0.61% | higher in 0/0 comparable accounts [7eleve 2/6↓]
+has a hashtag        interaction rate yes n=  1 median  0.22% | no n= 26  0.63% | higher in 0/0 comparable accounts [starbu 1/4↓]
+long (>150 chars)    interaction rate yes n=  8 median  1.01% | no n= 19  0.61% | higher in 1/1 comparable accounts [7eleve 5/3↑, starbu 2/3↓, dcard. 1/6↑]
+link posts per account {'7eleventw': 2, 'starbuckstw': 0, 'dcard.tw': 0, 'pchome24h': 0}; evening posts per account {'7eleventw': 3, 'starbuckstw': 1, 'dcard.tw': 6, 'pchome24h': 2}
+replies per post, median: question 2.0 vs other 2.0
+
+== 5. dcard.tw: posts that point readers to the full article elsewhere ('原文來自' / '搜尋文章標題')
+teaser: n=2 median views 811, like rate 0.03%, interaction rate 0.03%
+other: n=5 median views 4292, like rate 0.38%, interaction rate 0.38%
+
+== 6. older vs newer posts (median views / interaction rate by thirds of the time range)
+7eleventw    oldest/middle/newest third: views [20000, 7877, 10000], interaction ['0.31%', '3.45%', '2.08%']
+starbuckstw  oldest/middle/newest third: views [12000, 8252, 23000], interaction ['1.31%', '0.44%', '0.33%']
+dcard.tw     oldest/middle/newest third: views [356184, 3746, 689], interaction ['0.98%', '0.38%', '0.26%']
+pchome24h    oldest/middle/newest third: views [753000, 1511, 13000], interaction ['1.16%', '3.02%', '0.82%']
