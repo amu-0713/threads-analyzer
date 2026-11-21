@@ -9,13 +9,13 @@ Threads 公開帳號的貼文爬取與數據分析工具：輸入帳號 → 本�
 
 ## 展示帳號
 
-| 項目 | 值 |
-|---|---|
-| Email | `demo@threads-analyzer.dev` |
-| 密碼 | `Demo-2026!` |
+demo 帳號請見交件信。
 
 此帳號底下有 5 個分析任務：7eleventw、starbuckstw、dcard.tw、pchome24h（各自只有真實資料），以及補 mock 到 30 篇的 7eleventw 主分析任務。
-（repo 為 private；若要公開，請先移除或更換這組帳密。）
+
+## PRD 確認
+
+PRD 已於 2026-11-21 經零一行銷確認。
 
 ## 功能
 
