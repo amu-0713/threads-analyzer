@@ -56,7 +56,14 @@ export default async function JobReportPage({
           )}
         </div>
       ) : (
-        <ReportView summary={summary} posts={posts ?? []} scope={scope} />
+        <>
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+            <span className="opacity-60">匯出（{scope === "all" ? "全部資料" : "僅真實資料"}，含 source 欄位）：</span>
+            <a className="rounded border border-current/30 px-3 py-1" href={`/dashboard/jobs/${id}/export?format=csv&scope=${scope}`}>CSV</a>
+            <a className="rounded border border-current/30 px-3 py-1" href={`/dashboard/jobs/${id}/export?format=json&scope=${scope}`}>JSON</a>
+          </div>
+          <ReportView summary={summary} posts={posts ?? []} scope={scope} />
+        </>
       )}
     </main>
   );
