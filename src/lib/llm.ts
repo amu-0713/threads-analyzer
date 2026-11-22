@@ -42,7 +42,10 @@ async function requestText(key: string, model: ModelId, prompt: string): Promise
     res = await callGemini(key, model, prompt, VARIANTS[++vi]);
   }
   for (let attempt = 0; attempt < 2 && [429, 500, 502, 503, 504].includes(res.status); attempt++) {
-    console.log(`[llm] ${model} ${res.status}, retry ${attempt + 1}: ${(await res.clone().text()).replace(/\s+/g, " ").slice(0, 700)}`);
+    const body = (await res.clone().text()).replace(/\s+/g, " ");
+    console.log(`[llm] ${model} ${res.status}, retry ${attempt + 1}: ${body.slice(0, 700)}`);
+    // a per-day quota does not recover within seconds: say so instead of waiting and retrying
+    if (res.status === 429 && /per day/i.test(body)) throw new Error(`${model} 的每日請求額度已用完（Gemini 免費額度），請改選另一個模型，或隔天再試`);
     await new Promise((r) => setTimeout(r, 3000 * 2 ** attempt));
     res = await callGemini(key, model, prompt, VARIANTS[vi]);
   }

@@ -136,7 +136,7 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
         "2. do 是使用者明天就能照著發文的具體寫法（例如：首篇控制在 120 字內，結尾用一個問句邀請回覆），不能只是統計事實；每一點 do 只依據一個特徵。",
         "3. test 說明怎麼驗證（例如：連續 4 篇 A/B 對照，比較回覆率中位數），要寫出比較的指標與篇數。",
         "4. avoid 用一句話說要避開什麼，依據低迷型穩定特徵；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
-        "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先。",
+        "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先；不可寫「顯示」「相關」「導致」「造成」等因果或關聯說法；do 與 avoid 裡的數字只能使用資料中出現的數字，不可自己新增門檻（例如資料是 82 字就不能寫 80 字）。",
         f"6. 依實際篇數描述樣本：真實貼文 {data['真實貼文數']} 篇（依發文時間分成前後各約 {'、'.join(str(x) for x in data['前後兩半各'])} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。",
         f"7. 輸出 JSON：goal 必須是「{goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。",
         "8. 精簡：summary、do、why、test、avoid 每欄一句話，各不超過 60 字；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
@@ -220,6 +220,8 @@ def _request_text(client: httpx.Client, model: str, key: str, prompt: str, retri
     for attempt in range(retries):
         if res.status_code not in (429, 500, 502, 503, 504):
             break
+        if res.status_code == 429 and "per day" in res.text.lower():  # a per-day quota does not recover within seconds
+            raise AdviceError(f"{model} 的每日請求額度已用完（Gemini 免費額度），請改選另一個模型，或隔天再試")
         wait = 3 * 2**attempt
         log.warning("%s HTTP %s, retrying in %ss", model, res.status_code, wait)
         time.sleep(wait)

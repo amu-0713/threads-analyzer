@@ -113,6 +113,14 @@ def test_400_drops_thinking_then_schema():
     assert "thinkingConfig" in cfgs[0] and "thinkingConfig" not in cfgs[1] and "responseSchema" in cfgs[1] and "responseSchema" not in cfgs[2]
 
 
+def test_daily_quota_429_is_not_retried():
+    quota = (429, {"error": {"message": "Quota exceeded ... Generate content requests per day limit exceeded on Free Tier."}})
+    client, calls = _client(quota, _ok(GOOD))
+    with pytest.raises(A.AdviceError, match="每日請求額度"):
+        A.generate("p", "k", "gemini-3.8-flash", "擴大觸及", client)
+    assert len(calls) == 1  # no waiting, no second request
+
+
 def test_model_must_be_on_the_whitelist():
     assert A.MODELS == ["gemini-3.8-flash", "gemini-3.1-flash-lite"] and A.DEFAULT_MODEL == "gemini-3.8-flash"
     with pytest.raises(A.AdviceError, match="whitelist"):
