@@ -40,7 +40,7 @@ GOAL_TEXT = {
 # Only these can be chosen (UI: dropdown; CLI: --model). Default = first.
 MODELS = ["gemini-3.8-flash", "gemini-3.1-flash-lite"]
 DEFAULT_MODEL = MODELS[0]
-THINKING = {"gemini-3.8-flash": {"thinkingLevel": "minimal"}, "gemini-3.1-flash-lite": {"thinkingLevel": "minimal"}}
+THINKING = {"gemini-3.8-flash": {"thinkingLevel": "low"}, "gemini-3.1-flash-lite": {"thinkingLevel": "minimal"}}  # 3.8-flash rejects "minimal" (HTTP 400)
 API = "https://generativelanguage.googleapis.com/v1beta/models"
 
 RESPONSE_SCHEMA = {

@@ -27,7 +27,7 @@ export const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label
 
 /** thinking effort per model; both measured against the live API (see AI_LOG). Falls back to no config on a 400. */
 export const THINKING: Record<ModelId, Record<string, string>> = {
-  "gemini-3.8-flash": { thinkingLevel: "minimal" },
+  "gemini-3.8-flash": { thinkingLevel: "low" }, // "minimal" is rejected by this model (HTTP 400, see AI_LOG)
   "gemini-3.1-flash-lite": { thinkingLevel: "minimal" },
 };
 
