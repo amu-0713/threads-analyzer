@@ -1,26 +1,26 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { generateAdviceAction } from "@/app/dashboard/actions";
 import { llmEnabled } from "@/lib/llm";
-import AdviceButton from "@/components/AdviceButton";
-import AdviceText from "@/components/AdviceText";
+import PendingCommand from "@/components/PendingCommand";
+import AdviceSection from "@/components/advice/AdviceSection";
+import { guideStatus, parseStore, stableCounts } from "@/lib/advice";
 import ReportView from "@/components/report/ReportView";
 import { UUID_RE, modeLabel } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import type { Job, Post, Scope, Summary } from "@/lib/types";
 
 // The AI-advice server action runs under this route and can take a while.
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 export default async function JobReportPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ scope?: string; advice_error?: string }>;
+  searchParams: Promise<{ scope?: string }>;
 }) {
   const { id } = await params;
-  const { scope: scopeParam, advice_error } = await searchParams;
+  const { scope: scopeParam } = await searchParams;
   if (!UUID_RE.test(id)) notFound();
 
   const supabase = await createClient();
@@ -62,7 +62,14 @@ export default async function JobReportPage({
           {job.status === "failed" ? (
             <>任務失敗：{job.error ?? "未知原因"}</>
           ) : (
-            <>任務狀態：<b>{job.status}</b>。分析完成後（由本機 CLI 處理）這裡才會有報告。</>
+            <>
+              任務狀態：<b>{job.status}</b>。分析完成後（由本機 CLI 處理）這裡才會有報告。
+              {job.status === "pending" && (
+                <div className="mt-3">
+                  <PendingCommand mode={job.mode} />
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -75,22 +82,7 @@ export default async function JobReportPage({
           <ReportView summary={summary} posts={posts ?? []} scope={scope} mode={job.mode} />
           <section className="mt-10">
             <h2 className="mb-3 text-lg font-semibold">AI 建議</h2>
-            <div className="rounded border border-current/20 p-4 text-sm">
-              <p className="mb-3 text-xs opacity-70">
-                以下內容由 AI（Gemini）依<b>僅真實資料</b>的統計摘要產生，可能有誤，樣本很少時僅供參考；不含模擬（mock）資料。
-              </p>
-              {summary.llm_advice ? (
-                <AdviceText text={summary.llm_advice} />
-              ) : (
-                <p className="opacity-70">尚未產生。</p>
-              )}
-              <form action={generateAdviceAction} className="mt-3">
-                <input type="hidden" name="id" value={id} />
-                <AdviceButton enabled={llmEnabled()} hasAdvice={!!summary.llm_advice} />
-                {!llmEnabled() && <span className="ml-3 text-xs opacity-70">未設定 LLM_API_KEY，此功能停用</span>}
-              </form>
-              {advice_error && <p className="mt-2 text-red-600">產生失敗：{advice_error}</p>}
-            </div>
+            <AdviceSection jobId={id} store={parseStore(summary.llm_advice)} counts={stableCounts(summary)} status={guideStatus(summary)} enabled={llmEnabled()} />
           </section>
         </>
       )}

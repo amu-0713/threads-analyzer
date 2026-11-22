@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/format";
-import { buildPrompt, generateAdvice, llmEnabled } from "@/lib/llm";
+import { buildPrompt, isGoal, isModel, withEntry, type Entry } from "@/lib/advice";
+import { generateAdvice, llmEnabled } from "@/lib/llm";
 import { normalizeUsername } from "@/lib/username";
 
 export async function createJob(formData: FormData) {
@@ -60,31 +61,40 @@ export async function deleteJob(formData: FormData) {
   back({ notice: "已刪除任務" });
 }
 
-/** T12: generate AI advice from the real-only analysis and store it in job_summaries.llm_advice. */
-export async function generateAdviceAction(formData: FormData) {
-  const id = String(formData.get("id") ?? "");
-  const to = (params: Record<string, string>) => redirect(`/dashboard/jobs/${id}?` + new URLSearchParams(params));
-  if (!UUID_RE.test(id)) back({ error: "無效的任務 ID" });
-  if (!llmEnabled()) to({ advice_error: "尚未設定 LLM_API_KEY" });
+export type AdviceResult = { ok: true; entry: Entry } | { ok: false; error: string };
+
+/**
+ * Generate (or regenerate) the AI advice for one goal and one model, and cache it in job_summaries.llm_advice
+ * under "<goal>|<model>". The browser only sends ids: the goal and the model are checked against fixed lists here.
+ */
+export async function generateAdviceAction(jobId: string, goal: string, model: string): Promise<AdviceResult> {
+  if (!UUID_RE.test(jobId)) return { ok: false, error: "無效的任務 ID" };
+  if (!isGoal(goal)) return { ok: false, error: "無效的目標" };
+  if (!isModel(model)) return { ok: false, error: "不支援的模型" };
+  if (!llmEnabled()) return { ok: false, error: "尚未設定 LLM_API_KEY" };
 
   const supabase = await createClient();
-  const { data: job } = await supabase.from("jobs").select("username").eq("id", id).maybeSingle();
-  const { data: summary } = await supabase.from("job_summaries").select("metrics, group_analysis, insights").eq("job_id", id).maybeSingle();
-  if (!job || !summary) to({ advice_error: "找不到分析結果" });
-  const { data: posts } = await supabase
-    .from("posts")
-    .select("source, views, likes, replies, reposts, quotes, char_count, post_type, posted_at")
-    .eq("job_id", id)
-    .eq("source", "real");
+  const { data: job } = await supabase.from("jobs").select("username").eq("id", jobId).maybeSingle();
+  const { data: summary } = await supabase.from("job_summaries").select("group_analysis").eq("job_id", jobId).maybeSingle();
+  if (!job || !summary) return { ok: false, error: "找不到分析結果" };
 
-  let advice: string;
+  let advice;
   try {
-    advice = await generateAdvice(buildPrompt(job!.username, summary!, posts ?? []));
+    advice = await generateAdvice(model, goal, buildPrompt(job.username, goal, summary));
   } catch (e) {
-    to({ advice_error: e instanceof Error ? e.message : "產生失敗" });
+    return { ok: false, error: e instanceof Error ? e.message : "產生失敗" };
   }
-  const { data, error } = await supabase.from("job_summaries").update({ llm_advice: advice! }).eq("job_id", id).select("job_id");
-  if (error || !data?.length) to({ advice_error: error?.message ?? "無法儲存建議" });
-  revalidatePath(`/dashboard/jobs/${id}`);
-  to({});
+  const entry: Entry = {
+    goal, model, generated_at: new Date().toISOString(), n_posts: summary.group_analysis?.real?.writing_guide?.n_posts ?? 0, advice,
+  };
+  // merge into the CURRENT cache (another goal/model may have been stored meanwhile), then save
+  const { data: latest } = await supabase.from("job_summaries").select("llm_advice").eq("job_id", jobId).maybeSingle();
+  const { data, error } = await supabase
+    .from("job_summaries")
+    .update({ llm_advice: withEntry(latest?.llm_advice, entry) })
+    .eq("job_id", jobId)
+    .select("job_id");
+  if (error || !data?.length) return { ok: false, error: error?.message ?? "無法儲存建議" };
+  revalidatePath(`/dashboard/jobs/${jobId}`);
+  return { ok: true, entry };
 }

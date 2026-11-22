@@ -87,12 +87,33 @@ export type Metrics = {
   post_types: { type: string; n: number; share: number; avg_interaction_rate: number | null }[];
 };
 
+export type StableFeature = {
+  key: string;
+  label: string;
+  is_share: boolean;
+  direction: "higher" | "lower";
+  group_value: number;
+  others_value: number;
+  n_group: number;
+  n_others: number;
+};
+
+export type WritingGuide = {
+  available: boolean;
+  n_posts: number;
+  reason?: string;
+  halves?: number[];
+  groups?: Record<GroupName, { goal: string; n_members: number; stable_features: StableFeature[] }>;
+  rewrite_example?: { post: BriefPost; differences: { group: string; label: string; text: string }[] } | null;
+};
+
 export type GroupAnalysis = {
   rules: string;
   median_views: number | null;
   counts: Record<string, number>;
   assignments: Record<string, string>;
-  groups: Record<GroupName, { n_members: number; representatives: BriefPost[]; profile_of_representatives: Profile | null }>;
+  groups: Record<GroupName, { goal?: string; n_members: number; representatives: BriefPost[]; profile_of_representatives: Profile | null }>;
+  writing_guide?: WritingGuide;
 };
 
 export type Insight = { key: string; title: string; verdict: string; text: string };

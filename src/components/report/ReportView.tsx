@@ -1,4 +1,5 @@
 import Link from "next/link";
+import WritingGuide from "@/components/report/WritingGuide";
 import LengthScatter, { type Pt } from "@/components/charts/LengthScatter";
 import TimeSlotChart from "@/components/charts/TimeSlotChart";
 import { dateTime, interactionRate, num, pct, views } from "@/lib/format";
@@ -225,6 +226,10 @@ export default function ReportView({ summary, posts, scope, mode }: { summary: S
       </Section>
 
       <Section title="三組分類" id="groups">{ga ? <Groups ga={ga} /> : <p className="text-sm opacity-70">沒有分組結果。</p>}</Section>
+
+      <Section title="寫作清單（僅真實資料）" id="writing-guide">
+        <WritingGuide guide={summary.group_analysis.real?.writing_guide} />
+      </Section>
 
       <Section title="觀察">
         {scope === "real" || m.n_mock === 0 ? (  // no mock rows -> all data IS real data: same descriptive-only view
