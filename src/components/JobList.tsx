@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { deleteJob, rerunJob } from "@/app/dashboard/actions";
 import ConfirmButton from "@/components/ConfirmButton";
+import PendingCommand from "@/components/PendingCommand";
+import { Fragment } from "react";
 import { modeLabel } from "@/lib/format";
 import type { Job } from "@/lib/types";
 
@@ -23,7 +25,8 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
       </thead>
       <tbody>
         {jobs.map((j) => (
-          <tr key={j.id} className="border-b border-current/10">
+          <Fragment key={j.id}>
+          <tr className="border-b border-current/10">
             <td className="py-2">
               {j.status === "done" ? (
                 <Link href={`/dashboard/jobs/${j.id}`} className="underline">@{j.username}</Link>
@@ -50,6 +53,14 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
               </form>
             </td>
           </tr>
+          {j.status === "pending" && (
+            <tr className="border-b border-current/10">
+              <td colSpan={6} className="pb-3">
+                <PendingCommand mode={j.mode} />
+              </td>
+            </tr>
+          )}
+          </Fragment>
         ))}
       </tbody>
     </table>
