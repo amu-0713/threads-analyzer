@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { generateAdviceAction } from "@/app/dashboard/actions";
 import AdviceText from "@/components/AdviceText";
+import { taipeiStamp } from "@/lib/format";
 import { DEFAULT_MODEL, GOALS, GOAL_GROUP, MODELS, entryKey, isModel, modelLabel, type Entry, type Goal, type ModelId, type GuideStatus, type StableCounts, type Store } from "@/lib/advice";
 
 function Card({ entry }: { entry: Entry }) {
@@ -123,7 +124,7 @@ export default function AdviceSection({ jobId, store, counts, status, enabled }:
         </button>
         {entry && !pending && (
           <span className="text-xs opacity-60">
-            由 AI 產生，僅供參考・模型 {modelLabel(entry.model)}（{entry.model}）・{new Date(entry.generated_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hourCycle: "h23" })}
+            由 AI 產生，僅供參考・模型 {modelLabel(entry.model)}（{entry.model}）・{taipeiStamp(entry.generated_at)}
           </span>
         )}
       </div>

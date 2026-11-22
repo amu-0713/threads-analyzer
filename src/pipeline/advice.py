@@ -139,6 +139,7 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
         "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先。",
         f"6. 依實際篇數描述樣本：真實貼文 {data['真實貼文數']} 篇（依發文時間分成前後各約 {'、'.join(str(x) for x in data['前後兩半各'])} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。",
         f"7. 輸出 JSON：goal 必須是「{goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。",
+        "8. 精簡：summary、do、why、test、avoid 每欄一句話，各不超過 60 字；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
         "",
         json.dumps(data, ensure_ascii=False, separators=(",", ":")),
     ])
