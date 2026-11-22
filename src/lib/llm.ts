@@ -42,7 +42,7 @@ async function requestText(key: string, model: ModelId, prompt: string): Promise
     res = await callGemini(key, model, prompt, VARIANTS[++vi]);
   }
   for (let attempt = 0; attempt < 2 && [429, 500, 502, 503, 504].includes(res.status); attempt++) {
-    console.log(`[llm] ${model} ${res.status}, retry ${attempt + 1}`);
+    console.log(`[llm] ${model} ${res.status}, retry ${attempt + 1}: ${(await res.clone().text()).replace(/\s+/g, " ").slice(0, 700)}`);
     await new Promise((r) => setTimeout(r, 3000 * 2 ** attempt));
     res = await callGemini(key, model, prompt, VARIANTS[vi]);
   }
