@@ -13,7 +13,7 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
   }
   return (
     <div className="overflow-x-auto">
-    <table className="tbl w-full text-left text-sm">
+    <table className="tbl w-full text-left text-sm max-sm:[&_td]:px-1 max-sm:[&_th]:px-1">
       <thead>
         <tr className="border-b border-current/20">
           <th className="py-2">帳號</th>
