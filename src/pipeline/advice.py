@@ -178,6 +178,7 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
 SHARE_TARGET = re.compile(r"\d+(?:\.\d+)?\s*[%％]")
 LENGTH = re.compile(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?")
 LATE_NIGHT = re.compile(r"23\s*點\s*(?:以後|後)|午夜|凌晨")
+RATIO_CHANGE = re.compile(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)")
 
 
 def _content_problem(obj: dict, goal: str, n_actions: int | None = None) -> str | None:
@@ -192,7 +193,10 @@ def _content_problem(obj: dict, goal: str, n_actions: int | None = None) -> str 
         return "不可使用「觸及」（沒有觸及資料，請用按讚率或回覆率）"
     metric = GOAL_METRIC[goal][:3]  # 按讚率 / 回覆率
     other = "回覆率" if metric == "按讚率" else "按讚率"
-    for t in [obj["summary"], *[a["do"] for a in obj["actions"]]]:
+    # the avoid sentence counts too, without its "（低迷型 N 篇 vs ...）" citation
+    for t in [obj["summary"], *[a["do"] for a in obj["actions"]], obj["avoid"].split("（低迷型")[0]]:
+        if RATIO_CHANGE.search(t):
+            return "占比類特徵不可寫成「調整比例」；只能寫這篇要不要有提問句、放連結、在晚間發"
         if SHARE_TARGET.search(t):
             return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發"
         if any(not m.group(1) and not m.group(3) for m in LENGTH.finditer(t)):

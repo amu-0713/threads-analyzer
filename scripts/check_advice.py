@@ -99,7 +99,6 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
         if FORBID.search(whole): flags.append((tag, "全文", "推論用語（硬性）", FORBID.search(whole).group(0)))
         sw = sorted(set(SOFT.findall(whole)))
         if sw: flags.append((tag, "全文", "因果／關聯語氣（軟性）", "、".join(sw)))
-        if not 2 <= len(a["actions"]) <= 4: flags.append((tag, "actions", "數量不是 2–4", len(a["actions"])))
         for name, txt in fields:
             # 1) features / topics outside the stable list (includes keywords, types, media, other time slots)
             for topic, rx in TOPICS.items():
@@ -111,8 +110,10 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             ok = {str(wg["n_posts"]), *map(str, wg["halves"]), "18", "23"}  # 18 and 23 come from the label 晚間（18–23 點）
             for _, f in cands: ok |= {str(f["n_group"]), str(f["n_others"]), re.sub(r"\D", "", fmt(f, f["group_value"])), re.sub(r"\D", "", fmt(f, f["others_value"]))}
             if name in ("summary", "avoid") or name.endswith(" why") or name.endswith(" do"):
-                text_nums = re.sub(r"18\s*點?\s*[–\-~至到]\s*23\s*點?", "", txt)
-                stray = set(re.findall(r"\d+", text_nums)) - ok
+                text_nums = re.sub(r"18\s*點?\s*[–\-~至到]\s*23\s*點?(\s*59\s*分)?", "", txt)
+                # an approximate range (約 30 字左右 for a median of 26) is allowed: within 20 % of a stable value
+                vals = [float(x) for x in ok if x.isdigit()]
+                stray = {x for x in set(re.findall(r"\d+", text_nums)) - ok if not any(v and abs(float(x) - v) <= 0.2 * v for v in vals)}
                 if stray: flags.append((tag, name, "數字不在穩定清單內（可能自創門檻）", "、".join(sorted(stray))))
         # 3) why / avoid: must name a stable feature, with its group, and the numbers must match it
         def cite(name, txt, pool):
@@ -137,7 +138,8 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             if len(dtopics) > 1: info.append((tag, f"action {i} do", f"同時談到多個特徵：{[LABEL[t] for t in dtopics]}"))
             for f in tgt:
                 if f["key"] in dtopics and len(dtopics) == 1:
-                    up = re.search(INCR, ac["do"]) and not re.search(DECR, ac["do"]); down = re.search(DECR, ac["do"]) and not re.search(INCR, ac["do"])
+                    neg = re.search(r"不要|不放|不加|不用|不寫|別|避免|省略", ac["do"])
+                    up = not neg and re.search(INCR, ac["do"]) and not re.search(DECR, ac["do"]); down = neg or (re.search(DECR, ac["do"]) and not re.search(INCR, ac["do"]))
                     names_value = re.sub(r"\D", "", fmt(f, f["group_value"])) in re.findall(r"\d+", ac["do"])
                     if not names_value and ((f["direction"] == "lower" and up) or (f["direction"] == "higher" and down)):
                         flags.append((tag, f"action {i} do", "做法的方向疑似和特徵相反（請人工確認）", f"{f['label']}：{grp}{'較低' if f['direction']=='lower' else '較高'}；do={ac['do'][:40]}"))
@@ -159,6 +161,8 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             low_only = [f for f in low if f["key"] not in target_keys and re.search(TOPICS[f["key"]], ac["do"])]
             if "低迷型" in ac["do"] or "低迷型" in ac["why"] or low_only:
                 flags.append((tag, f"action {i} do", "do 引用了低迷型特徵（低迷型只能用在 avoid）", ac["do"][:50]))
+            if re.search(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)", ac["do"]):
+                flags.append((tag, f"action {i} do", "把占比寫成「調整比例」（應寫這篇要不要）", ac["do"][:50]))
             if re.search(r"\d+\s*[%％]", ac["do"]):
                 flags.append((tag, f"action {i} do", "把占比寫成百分比目標（應寫這篇要不要）", ac["do"][:50]))
             for m in re.finditer(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?", ac["do"]):
@@ -177,6 +181,12 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
                 flags.append((tag, f"action {i} test", f"驗證指標與組別不符（{grp}應比{metric}中位數）", ac["test"][:50]))
         if "觸及" in whole:
             flags.append((tag, "全文", "使用了「觸及」（沒有觸及資料）", ""))
+        for nm, t in (("summary", a["summary"]), ("avoid", a["avoid"].split("（低迷型")[0])):
+            if re.search(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)", t):
+                flags.append((tag, nm, "把占比寫成「調整比例」（應寫這篇要不要）", t[:50]))
+            for m in re.finditer(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?", t):
+                if not m.group(1) and not m.group(3):
+                    flags.append((tag, nm, "字數寫成精確門檻（應寫大約範圍）", m.group(0)))
         if re.search(r"\d+\s*[%％]", a["summary"]):
             flags.append((tag, "summary", "把占比寫成百分比目標", a["summary"][:50]))
 print("\n".join(out))

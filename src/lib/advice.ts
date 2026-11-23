@@ -171,6 +171,7 @@ const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|
 const SHARE_TARGET = /\d+(?:\.\d+)?\s*[%％]/;
 const LENGTH = /(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?/g;
 const LATE_NIGHT = /23\s*點\s*(?:以後|後)|午夜|凌晨/;
+const RATIO_CHANGE = /(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)/;
 
 /** Semantic rules that can be checked without a model (mirrored by _content_problem in advice.py). Returns the first problem or null. */
 export function contentProblem(obj: AdviceObject, goal: Goal, nActions?: number): string | null {
@@ -181,7 +182,9 @@ export function contentProblem(obj: AdviceObject, goal: Goal, nActions?: number)
   if (all.includes("觸及")) return "不可使用「觸及」（沒有觸及資料，請用按讚率或回覆率）";
   const metric = GOAL_METRIC[goal].slice(0, 3); // 按讚率 / 回覆率
   const other = metric === "按讚率" ? "回覆率" : "按讚率";
-  for (const t of [obj.summary, ...obj.actions.map((a) => a.do)]) {
+  // the avoid sentence counts too, without its "（低迷型 N 篇 vs ...）" citation
+  for (const t of [obj.summary, ...obj.actions.map((a) => a.do), obj.avoid.split("（低迷型")[0]]) {
+    if (RATIO_CHANGE.test(t)) return "占比類特徵不可寫成「調整比例」；只能寫這篇要不要有提問句、放連結、在晚間發";
     if (SHARE_TARGET.test(t)) return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發";
     for (const m of t.matchAll(LENGTH)) if (!m[1] && !m[3]) return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數";
     if (LATE_NIGHT.test(t)) return "晚間是 18:00–23:59；不在晚間發請寫「18 點以前」";

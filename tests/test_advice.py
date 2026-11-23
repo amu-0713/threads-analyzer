@@ -92,13 +92,15 @@ def test_validation_rejects_bad_answers(mutate, msg):
 
 
 @pytest.mark.parametrize("mutate,msg", [
-    (lambda o: o["actions"][1].update(do="把提問句比例調整為 50%"), "百分比目標"),
-    (lambda o: o.update(summary="提問句占比拉到 64％"), "百分比目標"),
+    (lambda o: o["actions"][1].update(do="把提問句比例調整為 50%"), "百分比目標|調整比例"),
+    (lambda o: o.update(summary="提問句占比拉到 64％"), "百分比目標|調整比例"),
     (lambda o: o["actions"][0].update(do="這篇寫 26 字"), "大約範圍"),
     (lambda o: o["actions"][1].update(do="在 23 點以後發文"), "18 點以前"),
     (lambda o: o["actions"][1].update(do="依低迷型的提問句占比，這篇加一個提問句"), "低迷型只能用在 avoid"),
     (lambda o: o["actions"][0].update(test="連續 4 篇，比較回覆率中位數"), "按讚率中位數"),
     (lambda o: o["actions"][0].update(test="連續 4 篇，比較按讚率與觸及人數"), "觸及"),
+    (lambda o: o.update(summary="調整字數與提問句比例，仍需測試"), "調整比例"),
+    (lambda o: o.update(avoid="避免撰寫超過 80 字的貼文（低迷型 13 篇 vs 其他 27 篇：字數（中位數）低迷型較高（82 字 vs 33 字））"), "大約範圍"),
 ])
 def test_v7_semantic_rules(mutate, msg):
     obj = json.loads(json.dumps(GOOD))
