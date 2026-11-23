@@ -78,6 +78,8 @@ def test_no_stable_feature_or_no_guide_means_no_advice():
     (lambda o: o["actions"][0].pop("test"), "do／why／test"),
     (lambda o: o.update(avoid=""), "avoid"),
     (lambda o: o["actions"][0].update(why="差異顯著（p 值 0.01）"), "推論用語"),
+    (lambda o: o.update(summary="加入提問句以增加互動"), "推論用語"),
+    (lambda o: o["actions"][1].update(do="確保每篇都有提問句"), "推論用語"),
 ])
 def test_validation_rejects_bad_answers(mutate, msg):
     obj = json.loads(json.dumps(GOOD))
@@ -178,4 +180,4 @@ def test_prompt_change_requires_a_version_bump():
     import hashlib
 
     prompt = A.build_prompt("acct", "擴大觸及", _summary(resonance=[_feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)]))
-    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (5, "028b879e276f")
+    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (6, "aa45f30dce4c")

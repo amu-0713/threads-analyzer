@@ -69,7 +69,7 @@ export function stableCounts(summary: { group_analysis?: any }): StableCounts | 
 
 /** Bump when the prompt text changes (src/pipeline/advice.py has the same number; tests/test_advice.py fails if the prompt changes
  *  without this being bumped). It is part of the basis, so advice written with an older prompt is hidden and must be regenerated. */
-export const PROMPT_VERSION = 5;
+export const PROMPT_VERSION = 6;
 
 /** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
  *  current one was written for an older guide or prompt: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
@@ -122,10 +122,10 @@ export function buildPrompt(username: string, goal: Goal, summary: { group_analy
     `任務：針對目標「${goal}」，告訴使用者「下一篇貼文」可以怎麼寫。`,
     "規則：",
     "1. 只能使用資料裡列出的穩定特徵。每點 actions 的 why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，四個部分都要有，數字照抄該特徵在資料中的「篇數」「方向」與兩個值，不可省略、四捨五入或改寫；特徵必須出現在「目標組穩定特徵」或「低迷型穩定特徵」。",
-    "2. do 是使用者明天就能照著發文的具體寫法（例如：首篇控制在 120 字內，結尾用一個問句邀請回覆），不能只是統計事實；每一點 do 只依據一個特徵。",
+    "2. do 是使用者明天就能照著發文的具體寫法（例如：首篇控制在 120 字內，結尾用一個問句邀請回覆），不能只是統計事實；每一點 do 只依據一個特徵（一點只談一個特徵，不要在同一點同時談字數與連結等兩件事）。",
     "3. test 說明怎麼驗證（例如：連續 4 篇 A/B 對照，比較回覆率中位數），要寫出比較的指標與篇數。",
     "4. avoid 用一句話說要避開什麼，只依據一個低迷型穩定特徵（不要把兩個特徵寫在同一句），句末用括號照規則 1 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
-    "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先；不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「有助於」等因果或關聯說法；do 與 avoid 裡的數字只能使用資料中出現的數字，不可自己新增門檻（例如資料是 82 字就不能寫 80 字）。",
+    "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先；不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；do 與 avoid 裡的數字只能使用資料中出現的數字，不可自己新增門檻（例如資料是 82 字就不能寫 80 字）。",
     `6. 依實際篇數描述樣本：真實貼文 ${data.真實貼文數} 篇（依發文時間分成前後各約 ${data.前後兩半各.join("、")} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。`,
     `7. 輸出 JSON：goal 必須是「${goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。`,
     "8. 精簡：每欄一句話；summary、do、test 各不超過 60 字，why 與 avoid 依規則 1、4 的格式；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
@@ -161,7 +161,8 @@ export const RESPONSE_SCHEMA = {
   required: ["goal", "summary", "actions", "avoid"],
 };
 
-const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明/;
+// inferential wording + causal promises (a reply using any of these is retried once with the reason, never stored)
+const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成/;
 
 /** Returns the advice object, or throws with the reason (invalid JSON, missing fields, inferential wording). */
 export function parseAdvice(text: string, goal: Goal): AdviceObject {
