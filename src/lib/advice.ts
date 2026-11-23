@@ -71,7 +71,7 @@ export function stableCounts(summary: { group_analysis?: any }): StableCounts | 
 
 /** Bump when the prompt text changes (src/pipeline/advice.py has the same number; tests/test_advice.py fails if the prompt changes
  *  without this being bumped). It is part of the basis, so advice written with an older prompt is hidden and must be regenerated. */
-export const PROMPT_VERSION = 8;
+export const PROMPT_VERSION = 9;
 
 /** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
  *  current one was written for an older guide or prompt: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
@@ -126,7 +126,7 @@ export function buildPrompt(username: string, goal: Goal, summary: { group_analy
     `任務：針對目標「${goal}」，告訴使用者「下一篇貼文」可以怎麼寫。`,
     "規則：",
     `1. 只能使用資料裡的穩定特徵。actions 剛好 ${data.建議點數} 點：「目標組穩定特徵」每個特徵各寫一點（依資料順序，同一個特徵不可寫兩點）；「低迷型穩定特徵」只能用在 avoid，不可寫進 do。`,
-    "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數：目標組較低時寫「控制在約 N 字左右以內」，N 是目標組的值往上取到十位（例如 26 → 約 30 字左右以內）；目標組較高時寫「寫到約 N 字左右以上」，N 往下取到十位（例如 89 → 約 80 字左右以上）；不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。",
+    "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數：目標組較低時寫「控制在約 N 字左右以內」，N 是目標組的值往上取到十位（例如 26 → 約 30 字左右以內）；目標組較高時寫「寫到約 N 字左右以上」，N 往下取到十位（例如 89 → 約 80 字左右以上）；不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。summary 與 avoid 也一樣：占比類特徵只寫「加入提問句」「不放連結」「18 點以前發」這種要不要的說法，不可寫「增加」「減少」「多用」「少用」。",
     "3. 晚間的定義是 18:00–23:59。建議不在晚間發時寫「18 點以前發」，不可寫「23 點以後」。",
     "4. why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，數字照抄資料中的篇數、方向與兩個值，不可省略或改寫。",
     `5. test 寫怎麼驗證：連續幾篇照做，和沒照做的貼文比較「${data.驗證指標}」；只能用這個指標，不可寫觸及人數、觀看數或其他指標。`,

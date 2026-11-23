@@ -210,7 +210,7 @@ def test_prompt_change_requires_a_version_bump():
     import hashlib
 
     prompt = A.build_prompt("acct", "提高按讚、建立好感", _summary(resonance=[_feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)]))
-    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (8, "f5a4e2e74c90")
+    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (9, "0ed5f391b241")
 
 
 def test_v8_rounding_and_avoid_direction():
