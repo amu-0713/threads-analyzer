@@ -35,8 +35,8 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
                 <>@{j.username}</>
               )}
             </td>
-            <td>{modeLabel(j.mode)}</td>
-            <td>{statusLabel(j.status)}{j.status === "failed" && j.error ? <div className="max-w-xs text-xs text-red-600">{j.error}</div> : null}</td>
+            <td className="whitespace-nowrap">{modeLabel(j.mode)}</td>
+            <td className="whitespace-nowrap">{statusLabel(j.status)}{j.status === "failed" && j.error ? <div className="max-w-xs whitespace-normal text-xs text-red-600">{j.error}</div> : null}</td>
             <td>{j.post_count}</td>
             <td className="hidden sm:table-cell">{new Date(j.created_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}</td>
             <td className="whitespace-nowrap py-1 text-right">
