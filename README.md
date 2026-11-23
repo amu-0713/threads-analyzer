@@ -24,7 +24,9 @@ PRD 已於 2026-11-21 經零一行銷確認。
 - 報告頁 `/dashboard/jobs/<id>`：總覽指標卡、互動率 Top 5、發文時段圖、文長 vs 互動率散佈圖、關鍵字與 hashtag、貼文類型、三組分類與代表貼文、「全部資料／僅真實資料」切換、mock 貼文明確標示、資料限制提示
 - 匯出：CSV／JSON（含 `source` 欄位，標明 `real` 或 `mock`）
 - 比較頁 `/dashboard/compare`：多個任務並列比較（只用真實資料，含模式欄；可把未登入與登入的同一帳號並排），並附 4 個帳號的洞察與內容建議（`reports/insights.md`，以登入模式 160 篇為主，未登入結果放附錄對照）
-- AI 建議（選用）：Gemini 依「僅真實資料」的統計摘要產生內容建議，標明 AI 產生；可由 CLI 預先產生，報告頁按鈕作為「重新產生」；沒有 `LLM_API_KEY` 時按鈕停用
+- 三組分類的「寫作清單」：每組綁一個行銷目標（共鳴型 → 擴大觸及、建立好感；討論型 → 帶動討論、收集意見；低迷型 → 要避開或改寫的寫法），列出該組貼文與其他貼文在字數（中位數）、提問句、含連結、晚間占比上的差別。**只列出前後期一致的寫法**（依發文時間分成前後兩半，方向相同、且兩半中該組都至少 3 篇）；真實貼文少於 20 篇時顯示「樣本太少，無法列出寫作清單」。分組規則本身沒有改
+- AI 建議（選用）：先選目標（擴大觸及／帶動討論）與模型，Gemini 依該目標對應組別的穩定特徵產生 2–4 點可執行的做法（做法／依據／驗證）與一句「避開」，以卡片呈現並標明「AI 產生，僅供參考」與所用模型。結果依「目標＋模型」快取；切換時已有快取就直接顯示，沒有就即時產生，旁邊有「重新產生」。沒有 `LLM_API_KEY` 時按鈕停用
+- 任務是 `pending` 時，列表與報告頁會顯示要在本機執行的指令與「複製」按鈕；`failed` 時顯示 `jobs.error`
 
 ## 目錄結構
 
@@ -86,7 +88,7 @@ python -m src.pipeline.run --job <job-id>                  # 單一任務（可�
 python -m src.pipeline.run --job <job-id> --mock-to 30     # 真實篇數 < 30 時補 mock 到 30
 python -m src.pipeline.run --job <job-id> --analyze-only   # 不重爬，只重跑分析
 python -m src.pipeline.validate_mock --job <job-id>        # 分析能否找回 mock 內寫入的 3 個規律
-python -m src.pipeline.advice --all                         # 預先產生 AI 建議並存入 job_summaries.llm_advice（server 端呼叫 Gemini；--job <id> 指定任務、--dry-run 只印不存）
+python -m src.pipeline.advice --all --mode login            # 預先產生兩種目標的 AI 建議並存入 job_summaries.llm_advice（--job <id> 指定任務、--goal 擴大觸及|帶動討論、--model 白名單內的模型、--dry-run 只印不存）
 python -m src.pipeline.insights_numbers --mode login       # 重現 reports/insights.md 引用的所有數字（--mode anonymous：附錄對照用的未登入資料）
 python -m pytest -q tests
 ```
@@ -150,7 +152,7 @@ python -m src.pipeline.insights_numbers --mode login            # 重現洞察�
 
 - Framework 自動偵測為 Next.js；`vercel.json` 把 Functions 區域設在東京（`hnd1`），與 Supabase（ap-northeast-1）同區。連到 GitHub `main`，push 後自動部署。
 - **只需要兩個環境變數**（Production／Preview／Development 都設）：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`。
-- 選用：`LLM_API_KEY`（Gemini API key，只在 server 端使用；改環境變數後需重新部署才生效）。
+- 選用：`LLM_API_KEY`（Gemini API key，只在 server 端使用；改環境變數後需重新部署才生效）。**Preview 也要設**，否則分支預覽網址上的 AI 建議會停用。
 - **不可**設定 service_role key。
 
 ## 已知限制
@@ -162,7 +164,7 @@ python -m src.pipeline.insights_numbers --mode login            # 重現洞察�
 - **爬蟲在本機執行**：網頁只能新增任務與看結果，不能觸發爬取；dashboard 的「重跑」只是把任務設回 `pending`。
 - **Supabase 的 leaked password protection 未啟用**：這項需要付費方案，目前的安全檢查會因此有一則警告。
 - **註冊需要信箱驗證**（Confirm email 開啟）：Supabase 內建信件服務有寄信限制，展示請用上面的 demo 帳號。
-- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到統計摘要（真實貼文只有個位數），報告頁已標明僅供參考。預設模型 `gemini-3.1-flash-lite`、thinking 設為 minimal，單次約 2–5 秒；偶爾會遇到 Google 回 503，CLI 會自動重試，網頁按鈕則顯示原因。回應沒有正常結束或太短時不會存檔。
+- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到「選定目標對應組別的穩定特徵」與篇數（不是原始貼文），報告頁已標明僅供參考。下拉只有兩個模型（白名單，server 端檢查，不接受任意模型名稱）：預設 `gemini-3.8-flash`（thinking 為 low；`minimal` 會被這個模型以 400 拒絕）與快速的 `gemini-3.1-flash-lite`（minimal，約 3–4 秒）。**這把 key 是免費額度：`gemini-3.8-flash` 每天只有 20 次請求**，用完後會顯示「每日請求額度已用完」，可改選快速模型或隔天再試；`gemini-3.8-flash` 另外常遇到 503（高需求），回應時間約 10–30 秒，超過原訂的 15 秒目標。回應不是合法 JSON、欄位缺漏或用了推論用語時會重試一次，仍失敗就顯示原因且不存檔。穩定度篩選只看方向，差距很小的特徵（例如 35 字 vs 38 字）也會通過。逐條檢查結果見 `reports/advice_acceptance.md`。
 - **登入模式依賴使用者的工作階段**：工作階段過期、帳號被要求驗證或被限制時，爬取會停止；`storage_state` 檔等同登入狀態，必須自行妥善保管並在用完後刪除。
 - **洞察裡的「邀請型／規則寫滿型」是人工分類**，在看過資料之後才判讀，屬於探索性分析（見 `reports/insights.md` 附錄 C）。
 - 若 Threads 改版（頁面結構、內嵌 JSON、登入牆行為），爬蟲需要跟著調整。
