@@ -24,7 +24,9 @@ PRD 已於 2026-11-21 經零一行銷確認。
 - 報告頁 `/dashboard/jobs/<id>`：總覽指標卡、互動率 Top 5、發文時段圖、文長 vs 互動率散佈圖、關鍵字與 hashtag、貼文類型、三組分類與代表貼文、「全部資料／僅真實資料」切換、mock 貼文明確標示、資料限制提示
 - 匯出：CSV／JSON（含 `source` 欄位，標明 `real` 或 `mock`）
 - 比較頁 `/dashboard/compare`：多個任務並列比較（只用真實資料，含模式欄；可把未登入與登入的同一帳號並排），並附 4 個帳號的洞察與內容建議（`reports/insights.md`，以登入模式 160 篇為主，未登入結果放附錄對照）
-- AI 建議（選用）：Gemini 依「僅真實資料」的統計摘要產生內容建議，標明 AI 產生；可由 CLI 預先產生，報告頁按鈕作為「重新產生」；沒有 `LLM_API_KEY` 時按鈕停用
+- 三組分類的「寫作清單」：每組綁一個行銷目標（共鳴型 → 提高按讚、建立好感；討論型 → 帶動討論、收集意見；低迷型 → 要避開或改寫的寫法），列出該組貼文與其他貼文在字數（中位數）、提問句、含連結、晚間占比上的差別。**只列出前後期一致的寫法**（依發文時間分成前後兩半，方向相同、兩半中該組都至少 3 篇，且兩半的差距都達最小門檻：字數中位數相差至少 20%（相對於其他貼文）、占比類至少差 10 個百分點）；真實貼文少於 20 篇時顯示「樣本太少，無法列出寫作清單」。分組規則本身沒有改
+- AI 建議（選用）：先選目標（提高按讚、建立好感／帶動討論）與模型，Gemini 依該目標對應組別的穩定特徵產生可執行的做法（目標組每個穩定特徵一點，最多 4 點；做法／依據／驗證）與一句「避開」。做法只寫方向或大約範圍（例如「控制在約 30 字左右以內」，取整方向不比資料更嚴；這篇要不要有提問句），「避開」寫成低迷型的寫法本身（例如「避開沒有提問句的貼文」），驗證指標依分組定義（共鳴型比按讚率中位數、討論型比回覆率中位數），低迷型特徵只用在「避開」，以卡片呈現並標明「AI 產生，僅供參考」與所用模型。結果依「目標＋模型」快取；切換時已有快取就直接顯示，沒有就即時產生（預設模型約 10–20 秒），旁邊有「重新產生」。預設模型還沒有建議時，畫面先顯示快速模型的建議並註明。寫作清單重新分析或 prompt 改版後，舊建議會失效並提示重新產生。預設模型的每日額度用完時，畫面顯示「今日額度已用完，請改用快速模型」並提供一鍵改用。沒有 `LLM_API_KEY` 時按鈕停用
+- 任務是 `pending` 時，列表與報告頁會顯示要在本機執行的指令與「複製」按鈕；`failed` 時顯示 `jobs.error`
 
 ## 目錄結構
 
@@ -86,8 +88,9 @@ python -m src.pipeline.run --job <job-id>                  # 單一任務（可�
 python -m src.pipeline.run --job <job-id> --mock-to 30     # 真實篇數 < 30 時補 mock 到 30
 python -m src.pipeline.run --job <job-id> --analyze-only   # 不重爬，只重跑分析
 python -m src.pipeline.validate_mock --job <job-id>        # 分析能否找回 mock 內寫入的 3 個規律
-python -m src.pipeline.advice --all                         # 預先產生 AI 建議並存入 job_summaries.llm_advice（server 端呼叫 Gemini；--job <id> 指定任務、--dry-run 只印不存）
+python -m src.pipeline.advice --all --mode login            # 預先產生兩種目標的 AI 建議並存入 job_summaries.llm_advice（--job <id> 指定任務、--goal 提高按讚、建立好感|帶動討論、--model 白名單內的模型、--dry-run 只印不存）
 python -m src.pipeline.insights_numbers --mode login       # 重現 reports/insights.md 引用的所有數字（--mode anonymous：附錄對照用的未登入資料）
+python scripts/check_advice.py                              # 逐條檢查快取中的 AI 建議（每個欄位是否只引用穩定清單內的特徵、數字是否對得上）；用法見檔頭，可用 CHECK_EMAIL／CHECK_PASSWORD 以使用者身分（RLS）唯讀執行
 python -m pytest -q tests
 ```
 
@@ -150,7 +153,7 @@ python -m src.pipeline.insights_numbers --mode login            # 重現洞察�
 
 - Framework 自動偵測為 Next.js；`vercel.json` 把 Functions 區域設在東京（`hnd1`），與 Supabase（ap-northeast-1）同區。連到 GitHub `main`，push 後自動部署。
 - **只需要兩個環境變數**（Production／Preview／Development 都設）：`NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`。
-- 選用：`LLM_API_KEY`（Gemini API key，只在 server 端使用；改環境變數後需重新部署才生效）。
+- 選用：`LLM_API_KEY`（Gemini API key，只在 server 端使用；改環境變數後需重新部署才生效）。**Preview 也要設**，否則分支預覽網址上的 AI 建議會停用。
 - **不可**設定 service_role key。
 
 ## 已知限制
@@ -162,7 +165,7 @@ python -m src.pipeline.insights_numbers --mode login            # 重現洞察�
 - **爬蟲在本機執行**：網頁只能新增任務與看結果，不能觸發爬取；dashboard 的「重跑」只是把任務設回 `pending`。
 - **Supabase 的 leaked password protection 未啟用**：這項需要付費方案，目前的安全檢查會因此有一則警告。
 - **註冊需要信箱驗證**（Confirm email 開啟）：Supabase 內建信件服務有寄信限制，展示請用上面的 demo 帳號。
-- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到統計摘要（真實貼文只有個位數），報告頁已標明僅供參考。預設模型 `gemini-3.1-flash-lite`、thinking 設為 minimal，單次約 2–5 秒；偶爾會遇到 Google 回 503，CLI 會自動重試，網頁按鈕則顯示原因。回應沒有正常結束或太短時不會存檔。
+- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到「選定目標對應組別的穩定特徵」、篇數與代表貼文的數值特徵（不含原始貼文與常見關鍵字），報告頁已標明僅供參考。下拉只有兩個模型（白名單，server 端檢查，不接受任意模型名稱）：預設 `gemini-3.8-flash`（thinking 為 low；`minimal` 會被這個模型以 400 拒絕，約 10–20 秒，常遇到 503）與快速的 `gemini-3.1-flash-lite`（minimal，約 3–5 秒）。**這把 key 是免費額度：`gemini-3.8-flash` 每天只有 20 次請求**。回應不是合法 JSON、欄位缺漏、用了推論用語或因果承諾（「顯著」「以增加」「確保」等）時會重試一次，仍失敗就顯示原因且不存檔。prompt 有版本號（目前 v9；`PROMPT_VERSION`，改 prompt 沒有加版本號時測試會失敗）。伺服器會擋下語意不合格的回答（百分比目標、調整比例、精確字數、取整方向比資料更嚴、驗證指標與組別不符、do 用到低迷型、avoid 方向相反等），重試一次仍不合格就不存檔。逐條檢查結果見 `reports/advice_acceptance.md`。
 - **登入模式依賴使用者的工作階段**：工作階段過期、帳號被要求驗證或被限制時，爬取會停止；`storage_state` 檔等同登入狀態，必須自行妥善保管並在用完後刪除。
 - **洞察裡的「邀請型／規則寫滿型」是人工分類**，在看過資料之後才判讀，屬於探索性分析（見 `reports/insights.md` 附錄 C）。
 - 若 Threads 改版（頁面結構、內嵌 JSON、登入牆行為），爬蟲需要跟著調整。

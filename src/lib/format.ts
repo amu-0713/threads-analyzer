@@ -21,6 +21,14 @@ export function dateTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString("zh-TW", { timeZone: "Asia/Taipei", hourCycle: "h23" }) : "—";
 }
 
+/** "2026/11/23 02:07:07" in Taipei time. Built by hand (UTC+8, no DST) because toLocaleString output can differ between the
+ *  Node server and the browser (invisible characters), which breaks hydration in client components. */
+export function taipeiStamp(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 8 * 3600_000);
+  const z = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}/${z(d.getUTCMonth() + 1)}/${z(d.getUTCDate())} ${z(d.getUTCHours())}:${z(d.getUTCMinutes())}:${z(d.getUTCSeconds())}`;
+}
+
 /** How a job was scraped: logged out (first screen only) or with the owner's own Threads session. */
 export function modeLabel(mode: string | null | undefined): string {
   return mode === "login" ? "登入模式" : "未登入";

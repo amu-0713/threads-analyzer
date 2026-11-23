@@ -16,6 +16,14 @@ unreliable) and are left out of the percentile ranking too. For the rest:
   低迷型 = like pct < 0.5 and reply pct < 0.5
   討論型 = reply pct >= 0.5 and reply pct >= like pct
   共鳴型 = like pct >= 0.5 and like pct > reply pct
+
+Writing guide (group_analysis.real.writing_guide): every group is tied to a marketing goal, and for each group the posts
+of that group are compared with the other grouped posts on four features (median length, question share, link share,
+evening share). A feature is listed ONLY if it is stable: the real posts are split by posted_at into an older and a newer
+half (groups are NOT recomputed per half), and the direction (group higher / lower than the others) must be the same in
+both halves, with at least 3 posts of the group in each half, AND the gap must be big enough in BOTH halves (median length:
+at least GUIDE_MIN_REL_GAP = 20% relative to the other posts; shares: at least GUIDE_MIN_PP_GAP = 10 percentage points).
+Unstable features are dropped and not shown anywhere, including to the AI. Jobs with fewer than GUIDE_MIN_POSTS real posts get no guide.
 """
 
 from __future__ import annotations
@@ -40,6 +48,11 @@ SLOTS = [("凌晨 00–05", 0, 5), ("上午 06–11", 6, 11), ("下午 12–17",
 LENGTH_BINS = [("≤50 字", 0, 50), ("51–150 字", 51, 150), ("151–300 字", 151, 300), (">300 字", 301, 10**9)]
 GROUPS = ("低迷型", "討論型", "共鳴型")
 UNGROUPED = "未分組"
+GROUP_GOALS = {"共鳴型": "提高按讚、建立好感", "討論型": "帶動討論、收集意見", "低迷型": "要避開或改寫的寫法"}
+GUIDE_MIN_POSTS = 20  # fewer real posts than this: halves of < 10 posts, no guide
+GUIDE_MIN_GROUP_PER_HALF = 3
+GUIDE_MIN_REL_GAP = 0.20  # median length: |group - others| >= 20% of the others value
+GUIDE_MIN_PP_GAP = 0.10  # shares: |group - others| >= 10 percentage points
 MIN_VIEWS_RATIO = 0.2
 MIN_SIDE_N = 3  # minimum posts per side for a comparison
 PERMUTATIONS = 5000
@@ -267,7 +280,106 @@ REP_KEY = {  # how a group's representative posts are picked: the most typical =
 }
 
 
-def group_analysis(posts: list[dict]) -> dict:
+def _share(ps: list[dict], pred) -> float | None:
+    return sum(1 for p in ps if pred(p)) / len(ps) if ps else None
+
+
+# key, label, value function (list of posts -> number), whether it is a share (0-1) or a count
+GUIDE_FEATURES = [
+    ("char_median", "字數（中位數）", lambda ps: st.median([p["char_count"] for p in ps]) if ps else None, False),
+    ("question_share", "提問句占比", lambda ps: _share(ps, is_question), True),
+    ("link_share", "含連結占比", lambda ps: _share(ps, has_link), True),
+    ("evening_share", "晚間（18–23 點）占比", lambda ps: _share(ps, is_evening), True),
+]
+
+
+def _direction(a: float | None, b: float | None) -> str | None:
+    if a is None or b is None:
+        return None
+    return "higher" if a > b else "lower" if a < b else "same"
+
+
+def gap_big_enough(gv: float | None, ov: float | None, is_share: bool) -> bool:
+    """Minimum difference between a group and the other posts (a direction alone can be a 35 vs 38 character gap)."""
+    if gv is None or ov is None:
+        return False
+    gap = abs(gv - ov)
+    return gap >= GUIDE_MIN_PP_GAP - 1e-9 if is_share else gap >= GUIDE_MIN_REL_GAP * abs(ov) - 1e-9 and gap > 0
+
+
+def writing_guide(posts: list[dict], labels: dict[str, str]) -> dict:
+    """Per group: the features that are stable across the older and the newer half of the posts (see module docstring).
+
+    `labels` = post_url -> group computed ONCE on all the posts; the halves only re-split those same posts.
+    """
+    n = len(posts)
+    base = {"goals": GROUP_GOALS, "n_posts": n, "min_posts": GUIDE_MIN_POSTS}
+    if n < GUIDE_MIN_POSTS:
+        return {**base, "available": False, "reason": "sample_too_small"}
+    ordered = sorted(posts, key=_dt)
+    cut = n // 2
+    halves = [ordered[:cut], ordered[cut:]]
+    grouped = lambda ps: [p for p in ps if labels.get(p["post_url"]) in GROUPS]  # noqa: E731 - 未分組 is not a baseline
+
+    out_groups = {}
+    for g in GROUPS:
+        in_g = lambda ps: [p for p in ps if labels.get(p["post_url"]) == g]  # noqa: E731
+        out_g = lambda ps: [p for p in grouped(ps) if labels.get(p["post_url"]) != g]  # noqa: E731
+        G, O = in_g(posts), out_g(posts)
+        stable, n_unstable = [], 0
+        for key, label, fn, is_share in GUIDE_FEATURES:
+            per_half = []
+            for half in halves:
+                gh, oh = in_g(half), out_g(half)
+                ok = len(gh) >= GUIDE_MIN_GROUP_PER_HALF and len(oh) >= 1
+                gv, ov = (fn(gh), fn(oh)) if ok else (None, None)
+                big = gap_big_enough(gv, ov, is_share)
+                per_half.append({"n_group": len(gh), "n_others": len(oh), "group_value": _round(gv, 3), "others_value": _round(ov, 3),
+                                 "direction": _direction(gv, ov) if big else None})  # a gap below the minimum counts as no direction
+            d1, d2 = per_half[0]["direction"], per_half[1]["direction"]
+            gv_all, ov_all = fn(G), fn(O)
+            full_dir = _direction(gv_all, ov_all)
+            # stable = same real direction in both halves (group >= 3 posts in each, gap above the minimum in each) and the full sample agrees
+            if d1 and d1 == d2 and d1 != "same" and full_dir == d1:
+                stable.append({"key": key, "label": label, "is_share": is_share, "direction": d1, "group_value": _round(gv_all, 3),
+                               "others_value": _round(ov_all, 3), "n_group": len(G), "n_others": len(O), "halves": per_half})
+            else:
+                n_unstable += 1
+        out_groups[g] = {"goal": GROUP_GOALS[g], "n_members": len(G), "stable_features": stable, "n_unstable": n_unstable}
+    return {**base, "available": True, "halves": [len(h) for h in halves], "groups": out_groups,
+            "rule": "同一組分群結果；依發文時間切成前後兩半；方向在兩半一致、兩半中該組都至少 3 篇、且兩半的差距都達最小門檻（字數相差至少 20%、占比至少差 10 個百分點）的特徵才列出"}
+
+
+def rewrite_example(posts: list[dict], labels: dict[str, str], guide: dict) -> dict | None:
+    """The most typical 低迷型 post and how it differs from the stable features of 討論型 / 共鳴型 (no AI involved)."""
+    if not guide.get("available"):
+        return None
+    lows = sorted((p for p in posts if labels.get(p["post_url"]) == "低迷型" and "_like_pct" in p), key=REP_KEY["低迷型"])
+    if not lows:
+        return None
+    post = lows[0]
+    checks = {"question_share": ("沒有提問句", "有提問句", is_question), "link_share": ("沒有連結", "含連結", has_link),
+              "evening_share": ("不是晚間發文", "是晚間發文", is_evening)}
+    diffs = []
+    for g in ("討論型", "共鳴型"):
+        for f in guide["groups"][g]["stable_features"]:
+            gv, ov = f["group_value"], f["others_value"]
+            if f["key"] in checks:
+                no_txt, yes_txt, pred = checks[f["key"]]
+                has = bool(pred(post))
+                differs = (f["direction"] == "higher" and not has) or (f["direction"] == "lower" and has)
+                if differs:
+                    diffs.append({"group": g, "feature": f["key"], "label": f["label"], "post": yes_txt if has else no_txt,
+                                  "text": f"這篇{yes_txt if has else no_txt}；{g}的{f['label']}是 {gv * 100:.0f}%，{'高' if f['direction'] == 'higher' else '低'}於其他貼文的 {ov * 100:.0f}%"})
+            elif f["key"] == "char_median":
+                differs = (f["direction"] == "higher" and post["char_count"] < gv) or (f["direction"] == "lower" and post["char_count"] > gv)
+                if differs:
+                    diffs.append({"group": g, "feature": "char_median", "label": f["label"], "post": f"{post['char_count']} 字",
+                                  "text": f"這篇 {post['char_count']} 字；{g}字數中位數 {gv:.0f} 字，{'高' if f['direction'] == 'higher' else '低'}於其他貼文的 {ov:.0f} 字"})
+    return {"post": _brief(post), "differences": diffs}
+
+
+def group_analysis(posts: list[dict], with_guide: bool = False) -> dict:
     labels = assign_groups(posts)
     by_group = {g: [p for p in posts if labels[p["post_url"]] == g] for g in (*GROUPS, UNGROUPED)}
     rated = [p for p in posts if _has_views(p)]
@@ -282,10 +394,14 @@ def group_analysis(posts: list[dict]) -> dict:
         members = by_group[g]
         reps = sorted(members, key=REP_KEY[g])[:5]  # 3-5 representatives (fewer only if the group is smaller)
         out["groups"][g] = {
+            "goal": GROUP_GOALS[g],
             "n_members": len(members),
             "representatives": [{**_brief(p), "like_pct": _round(p["_like_pct"], 2), "reply_pct": _round(p["_reply_pct"], 2)} for p in reps],
             "profile_of_representatives": _profile(reps) if reps else None,
         }
+    if with_guide:  # real posts only: a guide built from mock rows would teach the wrong thing
+        out["writing_guide"] = writing_guide(posts, labels)
+        out["writing_guide"]["rewrite_example"] = rewrite_example(posts, labels, out["writing_guide"])
     return out
 
 
@@ -344,7 +460,7 @@ def analyze(posts: list[dict]) -> dict:
         ps = [dict(p) for p in ps]  # grouping annotates rows; keep the caller's data untouched
         result["metrics"][name] = metrics(ps)
         result["top_posts"][name] = top_posts(ps)
-        result["group_analysis"][name] = group_analysis(ps)
+        result["group_analysis"][name] = group_analysis(ps, with_guide=(name == "real"))
         result["insights"][name] = insights(ps)
     # posts.group follows the "all" scope; the real-only labels stay in group_analysis.real.assignments
     result["post_groups"] = result["group_analysis"]["all"]["assignments"]

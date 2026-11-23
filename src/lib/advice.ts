@@ -1,0 +1,284 @@
+// Pure logic of the AI advice feature (goals, model whitelist, prompt input, validation, cache format).
+// NO path-alias imports and no I/O, so it can be run directly with node for testing.
+// src/pipeline/advice.py mirrors this file: keep the two in sync (checked by a parity script, see AI_LOG).
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+export const GOALS = ["提高按讚、建立好感", "帶動討論"] as const;
+export type Goal = (typeof GOALS)[number];
+
+/** goal -> the group whose stable features describe it; 低迷型 is always the "avoid" evidence */
+export const GOAL_GROUP: Record<Goal, "共鳴型" | "討論型"> = { "提高按讚、建立好感": "共鳴型", 帶動討論: "討論型" };
+export const GOAL_TEXT: Record<Goal, string> = {
+  "提高按讚、建立好感": "提高按讚、建立好感（共鳴型：按讚百分位高）",
+  帶動討論: "帶動討論、收集意見（討論型：回覆百分位高）",
+};
+/** the groups are defined by like / reply percentiles, so each goal is verified with that rate (there is no reach data) */
+export const GOAL_METRIC: Record<Goal, "按讚率中位數" | "回覆率中位數"> = { "提高按讚、建立好感": "按讚率中位數", 帶動討論: "回覆率中位數" };
+
+/** Only these models can be chosen; the browser sends an id and the server checks it against this list. */
+export const MODELS = [
+  { id: "gemini-3.8-flash", label: "預設（Flash）" },
+  { id: "gemini-3.1-flash-lite", label: "快速（Flash-Lite）" },
+] as const;
+export type ModelId = (typeof MODELS)[number]["id"];
+export const DEFAULT_MODEL: ModelId = MODELS[0].id;
+export const FAST_MODEL: ModelId = MODELS[1].id;
+export const isModel = (m: unknown): m is ModelId => MODELS.some((x) => x.id === m);
+export const isGoal = (g: unknown): g is Goal => (GOALS as readonly unknown[]).includes(g);
+export const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id;
+
+/** thinking effort per model; both measured against the live API (see AI_LOG). Falls back to no config on a 400. */
+export const THINKING: Record<ModelId, Record<string, string>> = {
+  "gemini-3.8-flash": { thinkingLevel: "low" }, // "minimal" is rejected by this model (HTTP 400, see AI_LOG)
+  "gemini-3.1-flash-lite": { thinkingLevel: "minimal" },
+};
+
+// ------------------------------------------------------------------------------------------------ prompt input
+type Feature = {
+  key: string; label: string; is_share: boolean; direction: "higher" | "lower"; group_value: number; others_value: number;
+  n_group: number; n_others: number;
+};
+
+const fmtVal = (f: Feature, v: number) => (f.is_share ? `${Math.round(v * 100)}%` : `${Math.round(v)} 字`);
+
+function featureForPrompt(group: string, f: Feature) {
+  return {
+    特徵: f.label,
+    方向: f.direction === "higher" ? `${group}較高` : `${group}較低`,
+    [group]: fmtVal(f, f.group_value),
+    其他貼文: fmtVal(f, f.others_value),
+    篇數: `${group} ${f.n_group} 篇、其他 ${f.n_others} 篇`,
+  };
+}
+
+export type StableCounts = Record<"共鳴型" | "討論型" | "低迷型", number>;
+
+/** Why there may be no guide: the analysis was never re-run with the new code ("missing") or the account has too few real posts. */
+export type GuideStatus = "ok" | "missing" | "too_small";
+export function guideStatus(summary: { group_analysis?: any }): GuideStatus {
+  const wg = summary.group_analysis?.real?.writing_guide;
+  return !wg ? "missing" : wg.available ? "ok" : "too_small";
+}
+
+/** Stable-feature counts per group, or null when the account has no writing guide (too few posts). */
+export function stableCounts(summary: { group_analysis?: any }): StableCounts | null {
+  const wg = summary.group_analysis?.real?.writing_guide;
+  if (!wg?.available) return null;
+  const c = (g: string) => (wg.groups?.[g]?.stable_features ?? []).length;
+  return { 共鳴型: c("共鳴型"), 討論型: c("討論型"), 低迷型: c("低迷型") };
+}
+
+/** Bump when the prompt text changes (src/pipeline/advice.py has the same number; tests/test_advice.py fails if the prompt changes
+ *  without this being bumped). It is part of the basis, so advice written with an older prompt is hidden and must be regenerated. */
+export const PROMPT_VERSION = 9;
+
+/** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
+ *  current one was written for an older guide or prompt: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
+export function adviceBasis(goal: Goal, summary: { group_analysis?: any }): string {
+  const wg = summary.group_analysis?.real?.writing_guide;
+  if (!wg?.available) return "";
+  const part = (g: string) =>
+    ((wg.groups?.[g]?.stable_features ?? []) as Feature[])
+      .map((f) => `${g}:${f.key}:${f.direction}:${f.group_value}:${f.others_value}:${f.n_group}:${f.n_others}`)
+      .join(",");
+  return `p${PROMPT_VERSION}|${part(GOAL_GROUP[goal])}|${part("低迷型")}`;
+}
+
+/** Everything the model sees for one goal: stable features only (never the unstable ones), counts, representative traits. */
+export function adviceInput(username: string, goal: Goal, summary: { group_analysis?: any }) {
+  const ga = summary.group_analysis?.real;
+  const wg = ga?.writing_guide;
+  if (!wg?.available) throw new Error("樣本太少，無法列出寫作清單");
+  const group = GOAL_GROUP[goal];
+  const feats = (wg.groups?.[group]?.stable_features ?? []) as Feature[];
+  if (!feats.length) throw new Error(`${goal}（${group}）目前沒有前後期一致的寫法，暫不產生建議`);
+  const low = (wg.groups?.["低迷型"]?.stable_features ?? []) as Feature[];
+  const rep = ga.groups?.[group]?.profile_of_representatives;
+  const pct = (x: number | null | undefined) => (x == null ? null : `${(x * 100).toFixed(2)}%`);
+  return {
+    帳號: `@${username}`,
+    目標: goal,
+    目標說明: GOAL_TEXT[goal],
+    驗證指標: GOAL_METRIC[goal],
+    建議點數: feats.length,
+    真實貼文數: wg.n_posts,
+    前後兩半各: wg.halves,
+    分組篇數: { 共鳴型: ga.counts?.共鳴型, 討論型: ga.counts?.討論型, 低迷型: ga.counts?.低迷型 },
+    目標組穩定特徵: feats.map((f) => featureForPrompt(group, f)),
+    目標組代表貼文特徵: rep && {
+      代表貼文數: rep.n,
+      平均字數: rep.avg_char_count == null ? null : Math.round(rep.avg_char_count),
+      平均按讚率: pct(rep.avg_like_rate),
+      平均回覆率: pct(rep.avg_reply_rate),
+      // common keywords are NOT sent: rule 10 forbids citing them, and in tests the model used them anyway (AI_LOG D-14)
+      提問句占比: rep.question_share == null ? null : `${Math.round(rep.question_share * 100)}%`,
+      含連結占比: rep.link_share == null ? null : `${Math.round(rep.link_share * 100)}%`,
+    },
+    低迷型穩定特徵: low.map((f) => featureForPrompt("低迷型", f)),
+  };
+}
+
+export function buildPrompt(username: string, goal: Goal, summary: { group_analysis?: any }): string {
+  const data = adviceInput(username, goal, summary);
+  return [
+    "你是社群行銷顧問。以下是某個 Threads 帳號「僅真實貼文」的分析摘要（JSON）。",
+    `任務：針對目標「${goal}」，告訴使用者「下一篇貼文」可以怎麼寫。`,
+    "規則：",
+    `1. 只能使用資料裡的穩定特徵。actions 剛好 ${data.建議點數} 點：「目標組穩定特徵」每個特徵各寫一點（依資料順序，同一個特徵不可寫兩點）；「低迷型穩定特徵」只能用在 avoid，不可寫進 do。`,
+    "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數：目標組較低時寫「控制在約 N 字左右以內」，N 是目標組的值往上取到十位（例如 26 → 約 30 字左右以內）；目標組較高時寫「寫到約 N 字左右以上」，N 往下取到十位（例如 89 → 約 80 字左右以上）；不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。summary 與 avoid 也一樣：占比類特徵只寫「加入提問句」「不放連結」「18 點以前發」這種要不要的說法，不可寫「增加」「減少」「多用」「少用」。",
+    "3. 晚間的定義是 18:00–23:59。建議不在晚間發時寫「18 點以前發」，不可寫「23 點以後」。",
+    "4. why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，數字照抄資料中的篇數、方向與兩個值，不可省略或改寫。",
+    `5. test 寫怎麼驗證：連續幾篇照做，和沒照做的貼文比較「${data.驗證指標}」；只能用這個指標，不可寫觸及人數、觀看數或其他指標。`,
+    "6. avoid 用一句話寫出要避開的寫法本身，也就是低迷型的樣子（例如「避開沒有提問句的貼文」「避開寫到約 80 字左右以上的長文」），不要寫成「不要…」的命令句；只依據一個低迷型穩定特徵，方向要和低迷型一致，句末用括號照規則 4 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
+    "7. 用中立字詞：不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語，也不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；不可使用「觸及」這個詞（資料沒有觸及數）。",
+    `8. 依實際篇數描述樣本：真實貼文 ${data.真實貼文數} 篇（依發文時間分成前後各約 ${data.前後兩半各.join("、")} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 要提醒仍需實際測試。`,
+    "9. summary、do、avoid 與 why 一樣，只能引用穩定清單內的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）；資料沒有圖片或影片資訊，不可提及素材類型；do 不要指定貼文主題或內容題材。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議。",
+    `10. 輸出 JSON：goal 必須是「${goal}」；summary 一句話（不超過 60 字，這個帳號要達成這個目標，下一篇該怎麼寫）；actions 剛好 ${data.建議點數} 點，每點有 do、why、test（do、test 各不超過 60 字）；avoid 一句話。`,
+    "",
+    JSON.stringify(data),
+  ].join("\n");
+}
+
+// ------------------------------------------------------------------------------------------------ output schema + validation
+export type Action = { do: string; why: string; test: string };
+export type AdviceObject = { goal: Goal; summary: string; actions: Action[]; avoid: string };
+
+/** Gemini responseSchema (OpenAPI subset) */
+export const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    goal: { type: "STRING", enum: [...GOALS] },
+    summary: { type: "STRING" },
+    actions: {
+      type: "ARRAY",
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: "OBJECT",
+        properties: { do: { type: "STRING" }, why: { type: "STRING" }, test: { type: "STRING" } },
+        required: ["do", "why", "test"],
+      },
+    },
+    avoid: { type: "STRING" },
+  },
+  required: ["goal", "summary", "actions", "avoid"],
+};
+
+// inferential wording + causal promises (a reply using any of these is retried once with the reason, never stored)
+const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成|(?:來|藉此|進而)(?:嘗試)?(?:提升|提高|增加|帶動)/;
+
+const SHARE_TARGET = /\d+(?:\.\d+)?\s*[%％]/;
+const LENGTH = /(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?/g;
+const LATE_NIGHT = /23\s*點\s*(?:以後|後)|午夜|凌晨/;
+const RATIO_CHANGE = /(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)|(減少|降低|增加|提高|多用|少用|多放|少放|多加|少加).{0,6}(提問|問句|連結|網址|晚間)/;
+
+const FEATURE_WORD: Record<string, string> = { question_share: "提問|問句", link_share: "連結|網址", evening_share: "晚間", char_median: "字" };
+const NEGATED = (word: string) => new RegExp(`(沒有|不含|缺少|無|少了|不帶|不放|沒放|沒加|不在)[^，。；]{0,4}(${word})`);
+const LONG = /以上|超過|過長|長文|長篇/;
+const SHORT = /以下|以內|過短|短文|短篇/;
+
+/** What the validator needs to know about one goal: the number of actions and the stable features it may cite. */
+export type AdviceContext = { nActions: number; target: Feature[]; low: Feature[] };
+export function adviceContext(goal: Goal, summary: { group_analysis?: any }): AdviceContext {
+  const groups = summary.group_analysis?.real?.writing_guide?.groups ?? {};
+  const target = (groups[GOAL_GROUP[goal]]?.stable_features ?? []) as Feature[];
+  return { nActions: target.length, target, low: (groups["低迷型"]?.stable_features ?? []) as Feature[] };
+}
+
+/** Semantic rules that can be checked without a model (mirrored by _content_problem in advice.py). Returns the first problem or null. */
+export function contentProblem(obj: AdviceObject, goal: Goal, ctx?: AdviceContext): string | null {
+  const nActions = ctx?.nActions;
+  const n = obj.actions.length;
+  if (nActions ? n !== nActions : n < 1 || n > 4) return nActions ? `actions 必須剛好 ${nActions} 點（目標組每個穩定特徵一點）` : "actions 必須是 1–4 點";
+  const all = [obj.summary, obj.avoid, ...obj.actions.flatMap((a) => [a.do, a.why, a.test])].join(" ");
+  if (FORBIDDEN.test(all)) return "內容含有推論用語";
+  if (all.includes("觸及")) return "不可使用「觸及」（沒有觸及資料，請用按讚率或回覆率）";
+  const metric = GOAL_METRIC[goal].slice(0, 3); // 按讚率 / 回覆率
+  const other = metric === "按讚率" ? "回覆率" : "按讚率";
+  // the avoid sentence counts too, without its "（低迷型 N 篇 vs ...）" citation
+  for (const t of [obj.summary, ...obj.actions.map((a) => a.do), obj.avoid.split("（低迷型")[0]]) {
+    if (RATIO_CHANGE.test(t)) return "占比類特徵不可寫成「調整比例」或「增加／減少」；只能寫這篇要不要有提問句、放連結、在晚間發";
+    if (SHARE_TARGET.test(t)) return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發";
+    for (const m of t.matchAll(LENGTH)) if (!m[1] && m[3] !== "左右" && m[3] !== "上下") return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數";
+    if (LATE_NIGHT.test(t)) return "晚間是 18:00–23:59；不在晚間發請寫「18 點以前」";
+  }
+  for (const a of obj.actions) {
+    if (a.do.includes("低迷型")) return "do 只能依據目標組的穩定特徵；低迷型只能用在 avoid";
+    if (!a.test.includes(metric) || a.test.includes(other)) return `test 必須比較${GOAL_METRIC[goal]}`;
+  }
+  if (!ctx?.target || !ctx.low) return null;
+  // a length range must not be stricter than the group's own median: round up for "較低", down for "較高"
+  const len = ctx.target.find((f) => f.key === "char_median");
+  if (len)
+    for (const a of obj.actions)
+      for (const m of a.do.matchAll(LENGTH)) {
+        const v = Math.round(len.group_value), x = Number(m[2]);
+        if (len.direction === "lower" && x < v) return `字數範圍不可比目標組的中位數（${v} 字）還嚴：較低時往上取到十位（例如 26 → 約 30 字左右以內）`;
+        if (len.direction === "higher" && x > v) return `字數範圍不可比目標組的中位數（${v} 字）還高：較高時往下取到十位（例如 89 → 約 80 字左右以上）`;
+      }
+  // avoid describes the 低迷型 way of writing itself, in the right direction
+  const avoid = obj.avoid.split("（低迷型")[0];
+  if (/不要|別再|勿/.test(avoid)) return "avoid 請寫成要避開的寫法本身（例如「避開沒有提問句的貼文」），不要寫成「不要…」的命令句";
+  for (const f of ctx.low) {
+    const word = FEATURE_WORD[f.key];
+    if (!word || !new RegExp(word).test(avoid)) continue;
+    if (f.key === "char_median") {
+      if (f.direction === "higher" && !LONG.test(avoid)) return `avoid 方向不對：低迷型的${f.label}較高，應避開較長的貼文`;
+      if (f.direction === "lower" && !SHORT.test(avoid)) return `avoid 方向不對：低迷型的${f.label}較低，應避開較短的貼文`;
+    } else {
+      const negated = NEGATED(word).test(avoid);
+      if (f.direction === "lower" && !negated) return `avoid 方向不對：低迷型的${f.label}較低，應寫「避開沒有…的貼文」`;
+      if (f.direction === "higher" && negated) return `avoid 方向不對：低迷型的${f.label}較高，應寫「避開有…的貼文」`;
+    }
+  }
+  return null;
+}
+
+/** Returns the advice object, or throws with the reason (invalid JSON, missing fields, wording or semantic rule broken). */
+export function parseAdvice(text: string, goal: Goal, ctx?: AdviceContext): AdviceObject {
+  let obj: any;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    throw new Error("回應不是合法的 JSON");
+  }
+  const str = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+  if (obj?.goal !== goal) throw new Error(`goal 欄位不是「${goal}」`);
+  if (!str(obj.summary)) throw new Error("缺少 summary");
+  if (!Array.isArray(obj.actions) || obj.actions.length < 1 || obj.actions.length > 4) throw new Error("actions 必須是 1–4 點");
+  for (const a of obj.actions) if (!str(a?.do) || !str(a?.why) || !str(a?.test)) throw new Error("某一點缺少 do／why／test");
+  if (!str(obj.avoid)) throw new Error("缺少 avoid");
+  const out: AdviceObject = { goal, summary: obj.summary.trim(), actions: obj.actions.map((a: Action) => ({ do: a.do.trim(), why: a.why.trim(), test: a.test.trim() })), avoid: obj.avoid.trim() };
+  const problem = contentProblem(out, goal, ctx);
+  if (problem) throw new Error(problem);
+  return out;
+}
+
+/** How many actions the advice for a goal must have: one per stable feature of the goal's group. */
+export function actionCount(goal: Goal, summary: { group_analysis?: any }): number {
+  return (summary.group_analysis?.real?.writing_guide?.groups?.[GOAL_GROUP[goal]]?.stable_features ?? []).length;
+}
+
+// ------------------------------------------------------------------------------------------------ cache in job_summaries.llm_advice
+export type Entry = { goal: Goal; model: string; generated_at: string; n_posts: number; basis?: string; advice: AdviceObject };
+export type Store = { version: 2; legacy_text: string | null; entries: Record<string, Entry> };
+export const entryKey = (goal: string, model: string) => `${goal}|${model}`;
+
+/** Old rows hold plain text; new rows hold this JSON. Both must keep working. */
+export function parseStore(raw: string | null | undefined): Store {
+  if (!raw) return { version: 2, legacy_text: null, entries: {} };
+  try {
+    const o = JSON.parse(raw);
+    if (o && o.version === 2 && typeof o.entries === "object") return { version: 2, legacy_text: o.legacy_text ?? null, entries: o.entries };
+  } catch {
+    /* plain text from the first version */
+  }
+  return { version: 2, legacy_text: raw, entries: {} };
+}
+
+export function withEntry(raw: string | null | undefined, entry: Entry): string {
+  const store = parseStore(raw);
+  store.entries[entryKey(entry.goal, entry.model)] = entry;
+  return JSON.stringify(store);
+}
