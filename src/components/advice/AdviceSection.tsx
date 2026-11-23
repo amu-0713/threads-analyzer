@@ -73,6 +73,16 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
     if (enabled && !blockedFor(g) && !(st && st.basis === bases[g])) run(g, m);
   };
 
+  // too few real posts for a writing guide: no AI advice at all (not even the plain text an older version stored)
+  if (status === "too_small") {
+    return (
+      <div className="rounded border border-current/20 p-4 text-sm">
+        <p>樣本太少，不產生 AI 建議。</p>
+        <p className="mt-1 text-xs opacity-70">真實貼文少於 20 篇時，無法列出前後期一致的寫法，所以不產生 AI 建議（登入模式約 40 篇可以）。</p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded border border-current/20 p-4 text-sm">
       <div className="flex flex-wrap items-center gap-3">
