@@ -153,3 +153,33 @@ def test_exact_threshold_values():
     assert gap_big_enough(0.6, 0.5, True)         # exactly 10 points
     assert not gap_big_enough(0.55, 0.5, True)    # 5 points
     assert not gap_big_enough(None, 0.5, True) and not gap_big_enough(50, 50, False)
+
+
+# ---------------------------------------------------------------- minimum number of posts that actually have a share feature
+def _q(posts, labels, group="共鳴型"):
+    return {f["key"]: f for f in writing_guide(posts, labels)["groups"][group]["stable_features"]}.get("question_share")
+
+
+def test_share_feature_needs_three_posts_on_the_higher_side():
+    # 共鳴型: 1 question post per half = 2 in total vs 0 among the others (17 points apart in each half, same direction) -> only 2 posts: dropped
+    posts, labels = _two_groups((100, 100), (50, 50), (1 / 6, 1 / 6), (0.0, 0.0))
+    assert _q(posts, labels) is None
+    # 2 + 1 = exactly 3 posts -> kept, and the counts are stored
+    posts, labels = _two_groups((100, 100), (50, 50), (2 / 6, 1 / 6), (0.0, 0.0))
+    f = _q(posts, labels)
+    assert f and f["n_group_with"] == 3 and f["n_others_with"] == 0 and f["direction"] == "higher"
+
+
+def test_the_higher_side_can_be_the_others():
+    # 共鳴型 never asks a question, the others ask in 2 of 6 posts per half (4 in total) -> the higher side has 4 posts: kept
+    posts, labels = _two_groups((100, 100), (50, 50), (0.0, 0.0), (2 / 6, 2 / 6))
+    f = _q(posts, labels)
+    assert f and f["direction"] == "lower" and f["n_group_with"] == 0 and f["n_others_with"] == 4
+    # the others have only 2 such posts in total -> dropped, whichever way the gap points
+    posts, labels = _two_groups((100, 100), (50, 50), (0.0, 0.0), (1 / 6, 1 / 6))
+    assert _q(posts, labels) is None
+
+
+def test_the_count_rule_does_not_apply_to_length():
+    posts, labels = _two_groups((100, 100), (50, 50), (0.0, 0.0), (0.0, 0.0))
+    assert {f["key"] for f in writing_guide(posts, labels)["groups"]["共鳴型"]["stable_features"]} == {"char_median"}

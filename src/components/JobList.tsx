@@ -4,6 +4,7 @@ import ConfirmButton from "@/components/ConfirmButton";
 import PendingCommand from "@/components/PendingCommand";
 import { Fragment } from "react";
 import { modeLabel } from "@/lib/format";
+import { statusLabel } from "@/lib/status";
 import type { Job } from "@/lib/types";
 
 export default function JobList({ jobs }: { jobs: Job[] }) {
@@ -12,14 +13,14 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
   }
   return (
     <div className="overflow-x-auto">
-    <table className="tbl w-full min-w-[520px] text-left text-sm">
+    <table className="tbl w-full text-left text-sm">
       <thead>
         <tr className="border-b border-current/20">
           <th className="py-2">帳號</th>
           <th>模式</th>
           <th>狀態</th>
           <th>貼文數</th>
-          <th>建立時間</th>
+          <th className="hidden sm:table-cell">建立時間</th>
           <th></th>
         </tr>
       </thead>
@@ -35,9 +36,9 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
               )}
             </td>
             <td>{modeLabel(j.mode)}</td>
-            <td>{j.status}{j.status === "failed" && j.error ? <div className="max-w-xs text-xs text-red-600">{j.error}</div> : null}</td>
+            <td>{statusLabel(j.status)}{j.status === "failed" && j.error ? <div className="max-w-xs text-xs text-red-600">{j.error}</div> : null}</td>
             <td>{j.post_count}</td>
-            <td>{new Date(j.created_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}</td>
+            <td className="hidden sm:table-cell">{new Date(j.created_at).toLocaleString("zh-TW", { timeZone: "Asia/Taipei" })}</td>
             <td className="whitespace-nowrap py-1 text-right">
               {(j.status === "done" || j.status === "failed") && (
                 <form action={rerunJob} className="inline">

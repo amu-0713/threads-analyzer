@@ -14,7 +14,7 @@ export default function NewJobForm() {
       </div>
       <label className="flex flex-wrap items-center gap-2 text-sm">
         <span className="opacity-70">抓取模式</span>
-        <select name="mode" defaultValue="anonymous" className="rounded border border-current/30 bg-transparent p-1">
+        <select name="mode" defaultValue="anonymous" className="min-w-0 max-w-full rounded border border-current/30 bg-transparent p-1">
           <option value="anonymous">未登入（只看得到個人頁首屏，約 5–9 篇）</option>
           <option value="login">登入模式（最多 40 篇；需在本機登入後用 --login 執行）</option>
         </select>

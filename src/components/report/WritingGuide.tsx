@@ -1,3 +1,4 @@
+import RewriteExample from "@/components/report/RewriteExample";
 import type { GroupName, StableFeature, WritingGuide as Guide } from "@/lib/types";
 
 const ORDER: GroupName[] = ["共鳴型", "討論型", "低迷型"];
@@ -42,17 +43,7 @@ export default function WritingGuide({ guide }: { guide: Guide | undefined }) {
               <p className="mt-3 text-sm opacity-70">沒有前後期一致的寫法可以列出。</p>
             )}
             <p className="mt-3 text-xs opacity-60">只列出前後期一致的寫法（依 {guide.n_posts} 篇真實貼文）</p>
-            {g === "低迷型" && example && (
-              <div className="mt-3 border-t border-current/10 pt-3 text-sm">
-                <div className="text-xs font-semibold">改寫參考：最典型的一篇低迷型貼文</div>
-                <p className="mt-1 opacity-80">「{Array.from(example.post.text.replace(/\s+/g, " ")).slice(0, 40).join("")}」</p>
-                {example.differences.length ? (
-                  <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">{example.differences.map((d) => <li key={d.text}>{d.text}</li>)}</ul>
-                ) : (
-                  <p className="mt-1 text-xs opacity-70">這篇與討論型、共鳴型的穩定寫法沒有不同之處。</p>
-                )}
-              </div>
-            )}
+            {g === "低迷型" && example && <RewriteExample example={example} />}
           </div>
         );
       })}
