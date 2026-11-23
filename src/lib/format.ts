@@ -33,3 +33,18 @@ export function taipeiStamp(iso: string): string {
 export function modeLabel(mode: string | null | undefined): string {
   return mode === "login" ? "登入模式" : "未登入";
 }
+
+/** A short quote of a post that ends at a sentence end (or a space) instead of in the middle of a word; adds "…" when cut.
+ *  Cuts by code point so an emoji is never split (the half character renders differently on server and client). */
+export function excerpt(text: string | null | undefined, max = 40): string {
+  const chars = Array.from((text ?? "").replace(/\s+/g, " ").trim());
+  if (chars.length <= max) return chars.join("") || "（無文字）";
+  const head = chars.slice(0, max);
+  const lastIndex = (re: RegExp) => head.reduce((acc, c, i) => (re.test(c) ? i : acc), -1);
+  const min = Math.floor(max / 3);
+  const end = lastIndex(/[。！？!?；;…]/);
+  if (end >= min) return head.slice(0, end + 1).join("") + "…";
+  const space = lastIndex(/ /);
+  if (space >= min) return head.slice(0, space).join("") + "…";
+  return head.join("") + "…";
+}

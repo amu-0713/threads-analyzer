@@ -14,9 +14,9 @@ const GROUP_INFO: Record<GroupName, string> = {
 
 export function SourceBadge({ source }: { source: "real" | "mock" }) {
   return source === "mock" ? (
-    <span className="rounded border border-[var(--series-2)] px-1.5 py-0.5 text-xs text-[var(--series-2)]">模擬 mock</span>
+    <span className="whitespace-nowrap rounded border border-[var(--series-2)] px-1.5 py-0.5 text-xs text-[var(--series-2)]">模擬 mock</span>
   ) : (
-    <span className="rounded border border-current/30 px-1.5 py-0.5 text-xs opacity-70">真實</span>
+    <span className="whitespace-nowrap rounded border border-current/30 px-1.5 py-0.5 text-xs opacity-70">真實</span>
   );
 }
 
@@ -49,7 +49,8 @@ function Snippet({ p }: { p: { text: string | null; post_url: string; source: "r
   );
 }
 
-export function LimitsNotice({ metrics, scope, mode }: { metrics: Metrics; scope: Scope; mode: JobMode }) {
+/** `mockTotal` = mock posts of the whole job; `metrics` only counts what the current scope shows (0 mock in the real-only view). */
+export function LimitsNotice({ metrics, scope, mode, mockTotal }: { metrics: Metrics; scope: Scope; mode: JobMode; mockTotal: number }) {
   return (
     <aside className="mt-6 rounded border border-current/30 bg-current/5 p-4 text-sm">
       <div className="font-semibold">資料限制</div>
@@ -66,12 +67,18 @@ export function LimitsNotice({ metrics, scope, mode }: { metrics: Metrics; scope
           </li>
         )}
         <li>觀看數取自單篇頁；≥ 1 萬時 Threads 只顯示到千位（如「1.5 萬」），以 <b>≈</b> 標示，比率有些微誤差。</li>
-        {metrics.n_mock > 0 ? (
-          <li>
-            {scope === "all" ? "目前顯示「全部資料」" : "你可以切換到「全部資料」"}：另含 <b>{metrics.n_mock}</b> 篇<b>模擬貼文（mock）</b>，
-            是為了補足到 30 篇而人工產生，不代表帳號真實表現；表格中以「模擬 mock」標示。
-            {scope === "real" && "目前顯示的是僅真實資料。"}
-          </li>
+        {mockTotal > 0 ? (
+          scope === "all" ? (
+            <li>
+              目前顯示「全部資料」：另含 <b>{mockTotal}</b> 篇<b>模擬貼文（mock）</b>，
+              是為了補足到 30 篇而人工產生，不代表帳號真實表現；表格中以「模擬 mock」標示。
+            </li>
+          ) : (
+            <li>
+              目前只顯示真實資料；這個任務另有 <b>{mockTotal}</b> 篇<b>模擬貼文（mock）</b>（為了補足到 30 篇而人工產生）已隱藏。
+              切換到「全部資料」可以看到，表格中會以「模擬 mock」標示。
+            </li>
+          )
         ) : (
           <li>此任務沒有補 mock，所有資料都是真實貼文。</li>
         )}
@@ -142,7 +149,7 @@ function Groups({ ga }: { ga: GroupAnalysis }) {
   );
 }
 
-export default function ReportView({ summary, posts, scope, mode }: { summary: Summary; posts: Post[]; scope: Scope; mode: JobMode }) {
+export default function ReportView({ summary, posts, scope, mode, advice }: { summary: Summary; posts: Post[]; scope: Scope; mode: JobMode; advice?: React.ReactNode }) {
   const m = summary.metrics[scope];
   const top = summary.top_posts[scope] ?? [];
   const ga = summary.group_analysis[scope];
@@ -161,7 +168,7 @@ export default function ReportView({ summary, posts, scope, mode }: { summary: S
 
   return (
     <>
-      <LimitsNotice metrics={m} scope={scope} mode={mode} />
+      <LimitsNotice metrics={m} scope={scope} mode={mode} mockTotal={summary.metrics.all?.n_mock ?? 0} />
 
       <Section title="總覽">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -230,6 +237,8 @@ export default function ReportView({ summary, posts, scope, mode }: { summary: S
       <Section title="寫作清單（僅真實資料）" id="writing-guide">
         <WritingGuide guide={summary.group_analysis.real?.writing_guide} />
       </Section>
+
+      {advice && <Section title="AI 建議" id="ai-advice">{advice}</Section>}
 
       <Section title="觀察">
         {scope === "real" || m.n_mock === 0 ? (  // no mock rows -> all data IS real data: same descriptive-only view

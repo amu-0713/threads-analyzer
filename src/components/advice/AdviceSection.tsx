@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { generateAdviceAction } from "@/app/dashboard/actions";
-import AdviceText from "@/components/AdviceText";
+import Link from "next/link";
+import { useGoal } from "@/components/GoalContext";
 import { taipeiStamp } from "@/lib/format";
 import { DEFAULT_MODEL, FAST_MODEL, GOALS, GOAL_GROUP, MODELS, entryKey, isModel, modelLabel, type Entry, type Goal, type ModelId, type GuideStatus, type StableCounts, type Store } from "@/lib/advice";
 
@@ -39,8 +40,8 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
   // empty when the default model ran out of quota), else the default model (generated on demand)
   const preferred = (g: Goal, current?: ModelId): ModelId =>
     current && valid(g, current) ? current : valid(g, DEFAULT_MODEL) ? DEFAULT_MODEL : valid(g, FAST_MODEL) ? FAST_MODEL : DEFAULT_MODEL;
-  const [goal, setGoal] = useState<Goal>(GOALS[0]);
-  const [model, setModel] = useState<ModelId>(() => preferred(GOALS[0]));
+  const { goal, setGoal } = useGoal();
+  const [model, setModel] = useState<ModelId>(() => preferred(goal));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -64,13 +65,14 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
       else setError(r.error);
     });
 
-  // switching shows the cached advice for that goal + model; if there is none, it is generated right away
-  const pick = (g: Goal, m: ModelId) => {
+  // Switching shows the cached advice for that goal + model. Picking a goal tab or pressing "use the fast model" generates right away
+  // when there is none; changing the model in the dropdown NEVER sends a request: the person presses 產生.
+  const pick = (g: Goal, m: ModelId, autoGenerate: boolean) => {
     setGoal(g);
     setModel(m);
     setError(null);
     const st = entries[entryKey(g, m)];
-    if (enabled && !blockedFor(g) && !(st && st.basis === bases[g])) run(g, m);
+    if (autoGenerate && enabled && !blockedFor(g) && !(st && st.basis === bases[g])) run(g, m);
   };
 
   // too few real posts for a writing guide: no AI advice at all (not even the plain text an older version stored)
@@ -93,7 +95,7 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
               role="tab"
               aria-selected={g === goal}
               disabled={pending}
-              onClick={() => pick(g, preferred(g, model))}
+              onClick={() => pick(g, preferred(g, model), true)}
               className={`rounded border px-3 py-1 ${g === goal ? "bg-foreground text-background" : "border-current/30"} disabled:opacity-50`}
             >
               {g}
@@ -105,7 +107,7 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
           <select
             value={model}
             disabled={pending}
-            onChange={(e) => isModel(e.target.value) && pick(goal, e.target.value)}
+            onChange={(e) => isModel(e.target.value) && pick(goal, e.target.value, false)}
             className="rounded border border-current/30 bg-transparent p-1 disabled:opacity-50"
           >
             {MODELS.map((m) => (
@@ -118,10 +120,26 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
       <p className="mt-3 text-xs opacity-70">
         以下內容由 AI（Gemini）依「僅真實資料」的分組寫作清單產生，只使用前後期一致的寫法，可能有誤，僅供參考；不含模擬（mock）資料。
       </p>
+      <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs opacity-70">
+        <li>兩個目標的做法可能相反，請依這篇貼文的目的擇一。</li>
+        <li>
+          <Link href="/dashboard/compare#insights" className="underline">比較頁洞察</Link>是跨帳號、看貼文目的的人工判讀；這裡只看單一帳號前後期一致的寫法，兩者可能不同。
+        </li>
+      </ul>
 
+      {/* exactly one message at a time: generating > error > the advice > why there is none (blocked / outdated / disabled / not yet) */}
       <div className="mt-3" aria-live="polite">
         {pending ? (
           <p className="opacity-70">{model === DEFAULT_MODEL ? "產生中，約 10–20 秒" : "產生中，通常 5 秒內"}</p>
+        ) : error ? (
+          <div className="text-red-600">
+            <p>{error.includes("今日額度已用完") ? error : `產生失敗：${error}`}</p>
+            {error.includes("今日額度已用完") && model !== FAST_MODEL && (
+              <button type="button" onClick={() => pick(goal, FAST_MODEL, true)} className="mt-2 rounded border border-current/40 px-3 py-1 text-foreground">
+                改用快速模型（{FAST_MODEL}）產生
+              </button>
+            )}
+          </div>
         ) : entry ? (
           <>
             {model === FAST_MODEL && !valid(goal, DEFAULT_MODEL) && (
@@ -136,17 +154,7 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
         ) : !enabled ? (
           <p className="opacity-70">未設定 LLM_API_KEY，此功能停用。</p>
         ) : (
-          <p className="opacity-70">尚未產生這個目標與模型的建議。</p>
-        )}
-        {error && (
-          <div className="mt-2 text-red-600">
-            <p>{error.includes("今日額度已用完") ? error : `產生失敗：${error}`}</p>
-            {error.includes("今日額度已用完") && model !== FAST_MODEL && (
-              <button type="button" onClick={() => pick(goal, FAST_MODEL)} className="mt-2 rounded border border-current/40 px-3 py-1 text-foreground">
-                改用快速模型（{FAST_MODEL}）產生
-              </button>
-            )}
-          </div>
+          <p className="opacity-70">尚未產生這個目標與模型的建議，請按「產生」。</p>
         )}
       </div>
 
@@ -165,14 +173,6 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
         )}
       </div>
 
-      {store.legacy_text && (
-        <details className="mt-4 text-xs">
-          <summary className="cursor-pointer opacity-70">舊版建議（純文字，改版前產生）</summary>
-          <div className="mt-2 opacity-80">
-            <AdviceText text={store.legacy_text} />
-          </div>
-        </details>
-      )}
     </div>
   );
 }

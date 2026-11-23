@@ -34,7 +34,7 @@ export default async function ComparePage({
     <main className="mx-auto w-full max-w-5xl px-4 py-8">
       <Link href="/dashboard" className="text-sm underline">← 任務列表</Link>
       <h1 className="mt-3 text-2xl font-bold">多帳號比較</h1>
-      <p className="mt-1 text-sm opacity-70">只使用真實貼文（不含 mock）。每個帳號只有 5–9 篇，差異僅供參考。</p>
+      <p className="mt-1 text-sm opacity-70">只使用真實貼文（不含 mock）。登入模式每個帳號約 40 篇，未登入模式只有 5–9 篇；樣本有限，差異僅供參考。</p>
 
       <form className="mt-6 rounded border border-current/20 p-4">
         <div className="mb-2 text-sm font-medium">選擇要比較的任務（至少 2 個）</div>

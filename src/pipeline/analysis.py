@@ -23,7 +23,8 @@ evening share). A feature is listed ONLY if it is stable: the real posts are spl
 half (groups are NOT recomputed per half), and the direction (group higher / lower than the others) must be the same in
 both halves, with at least 3 posts of the group in each half, AND the gap must be big enough in BOTH halves (median length:
 at least GUIDE_MIN_REL_GAP = 20% relative to the other posts; shares: at least GUIDE_MIN_PP_GAP = 10 percentage points).
-Unstable features are dropped and not shown anywhere, including to the AI. Jobs with fewer than GUIDE_MIN_POSTS real posts get no guide.
+For shares there is also a minimum count: at least GUIDE_MIN_FEATURE_POSTS posts on the higher side (group or others, whole sample)
+must have the feature. Unstable features are dropped and not shown anywhere, including to the AI. Jobs with fewer than GUIDE_MIN_POSTS real posts get no guide.
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ GUIDE_MIN_POSTS = 20  # fewer real posts than this: halves of < 10 posts, no gui
 GUIDE_MIN_GROUP_PER_HALF = 3
 GUIDE_MIN_REL_GAP = 0.20  # median length: |group - others| >= 20% of the others value
 GUIDE_MIN_PP_GAP = 0.10  # shares: |group - others| >= 10 percentage points
+GUIDE_MIN_FEATURE_POSTS = 3  # shares: at least this many posts on the HIGHER side must actually have the feature (3 of 11 vs 1 of 29 is anecdote)
 MIN_VIEWS_RATIO = 0.2
 MIN_SIDE_N = 3  # minimum posts per side for a comparison
 PERMUTATIONS = 5000
@@ -340,14 +342,22 @@ def writing_guide(posts: list[dict], labels: dict[str, str]) -> dict:
             gv_all, ov_all = fn(G), fn(O)
             full_dir = _direction(gv_all, ov_all)
             # stable = same real direction in both halves (group >= 3 posts in each, gap above the minimum in each) and the full sample agrees
-            if d1 and d1 == d2 and d1 != "same" and full_dir == d1:
-                stable.append({"key": key, "label": label, "is_share": is_share, "direction": d1, "group_value": _round(gv_all, 3),
-                               "others_value": _round(ov_all, 3), "n_group": len(G), "n_others": len(O), "halves": per_half})
+            # shares only: how many posts actually have the feature on each side (e.g. 3 of 11 question posts vs 1 of 29)
+            with_g = round(gv_all * len(G)) if is_share and gv_all is not None else None
+            with_o = round(ov_all * len(O)) if is_share and ov_all is not None else None
+            enough = (not is_share) or (with_g is not None and with_o is not None
+                                        and (with_g if full_dir == "higher" else with_o) >= GUIDE_MIN_FEATURE_POSTS)
+            if d1 and d1 == d2 and d1 != "same" and full_dir == d1 and enough:
+                feat = {"key": key, "label": label, "is_share": is_share, "direction": d1, "group_value": _round(gv_all, 3),
+                        "others_value": _round(ov_all, 3), "n_group": len(G), "n_others": len(O), "halves": per_half}
+                if is_share:
+                    feat.update({"n_group_with": with_g, "n_others_with": with_o})
+                stable.append(feat)
             else:
                 n_unstable += 1
         out_groups[g] = {"goal": GROUP_GOALS[g], "n_members": len(G), "stable_features": stable, "n_unstable": n_unstable}
     return {**base, "available": True, "halves": [len(h) for h in halves], "groups": out_groups,
-            "rule": "同一組分群結果；依發文時間切成前後兩半；方向在兩半一致、兩半中該組都至少 3 篇、且兩半的差距都達最小門檻（字數相差至少 20%、占比至少差 10 個百分點）的特徵才列出"}
+            "rule": "同一組分群結果；依發文時間切成前後兩半；方向在兩半一致、兩半中該組都至少 3 篇、兩半的差距都達最小門檻（字數相差至少 20%、占比至少差 10 個百分點），而且占比類特徵較高那側至少 3 篇具有該特徵，才列出"}
 
 
 def rewrite_example(posts: list[dict], labels: dict[str, str], guide: dict) -> dict | None:

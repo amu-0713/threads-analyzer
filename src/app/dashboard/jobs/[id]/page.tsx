@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { llmEnabled } from "@/lib/llm";
 import PendingCommand from "@/components/PendingCommand";
 import AdviceSection from "@/components/advice/AdviceSection";
+import { GoalProvider } from "@/components/GoalContext";
 import { GOALS, adviceBasis, guideStatus, parseStore, stableCounts } from "@/lib/advice";
 import ReportView from "@/components/report/ReportView";
 import { UUID_RE, modeLabel } from "@/lib/format";
+import { statusLabel } from "@/lib/status";
 import { createClient } from "@/lib/supabase/server";
 import type { Job, Post, Scope, Summary } from "@/lib/types";
 
@@ -63,7 +65,7 @@ export default async function JobReportPage({
             <>任務失敗：{job.error ?? "未知原因"}</>
           ) : (
             <>
-              任務狀態：<b>{job.status}</b>。分析完成後（由本機 CLI 處理）這裡才會有報告。
+              任務狀態：<b>{statusLabel(job.status)}</b>。分析完成後（由本機 CLI 處理）這裡才會有報告。
               {job.status === "pending" && (
                 <div className="mt-3">
                   <PendingCommand mode={job.mode} />
@@ -79,11 +81,24 @@ export default async function JobReportPage({
             <a className="rounded border border-current/30 px-3 py-1" href={`/dashboard/jobs/${id}/export?format=csv&scope=${scope}`}>CSV</a>
             <a className="rounded border border-current/30 px-3 py-1" href={`/dashboard/jobs/${id}/export?format=json&scope=${scope}`}>JSON</a>
           </div>
-          <ReportView summary={summary} posts={posts ?? []} scope={scope} mode={job.mode} />
-          <section className="mt-10">
-            <h2 className="mb-3 text-lg font-semibold">AI 建議</h2>
-            <AdviceSection jobId={id} store={parseStore(summary.llm_advice)} counts={stableCounts(summary)} bases={Object.fromEntries(GOALS.map((g) => [g, adviceBasis(g, summary)])) as Record<(typeof GOALS)[number], string>} status={guideStatus(summary)} enabled={llmEnabled()} />
-          </section>
+          <GoalProvider>
+            <ReportView
+              summary={summary}
+              posts={posts ?? []}
+              scope={scope}
+              mode={job.mode}
+              advice={
+                <AdviceSection
+                  jobId={id}
+                  store={parseStore(summary.llm_advice)}
+                  counts={stableCounts(summary)}
+                  bases={Object.fromEntries(GOALS.map((g) => [g, adviceBasis(g, summary)])) as Record<(typeof GOALS)[number], string>}
+                  status={guideStatus(summary)}
+                  enabled={llmEnabled()}
+                />
+              }
+            />
+          </GoalProvider>
         </>
       )}
     </main>
