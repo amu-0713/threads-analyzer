@@ -21,6 +21,7 @@ export const MODELS = [
 ] as const;
 export type ModelId = (typeof MODELS)[number]["id"];
 export const DEFAULT_MODEL: ModelId = MODELS[0].id;
+export const FAST_MODEL: ModelId = MODELS[1].id;
 export const isModel = (m: unknown): m is ModelId => MODELS.some((x) => x.id === m);
 export const isGoal = (g: unknown): g is Goal => (GOALS as readonly unknown[]).includes(g);
 export const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id;
@@ -64,6 +65,18 @@ export function stableCounts(summary: { group_analysis?: any }): StableCounts | 
   if (!wg?.available) return null;
   const c = (g: string) => (wg.groups?.[g]?.stable_features ?? []).length;
   return { 共鳴型: c("共鳴型"), 討論型: c("討論型"), 低迷型: c("低迷型") };
+}
+
+/** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
+ *  current one was written for an older guide: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
+export function adviceBasis(goal: Goal, summary: { group_analysis?: any }): string {
+  const wg = summary.group_analysis?.real?.writing_guide;
+  if (!wg?.available) return "";
+  const part = (g: string) =>
+    ((wg.groups?.[g]?.stable_features ?? []) as Feature[])
+      .map((f) => `${g}:${f.key}:${f.direction}:${f.group_value}:${f.others_value}:${f.n_group}:${f.n_others}`)
+      .join(",");
+  return `${part(GOAL_GROUP[goal])}|${part("低迷型")}`;
 }
 
 /** Everything the model sees for one goal: stable features only (never the unstable ones), counts, representative traits. */
@@ -112,6 +125,7 @@ export function buildPrompt(username: string, goal: Goal, summary: { group_analy
     `6. 依實際篇數描述樣本：真實貼文 ${data.真實貼文數} 篇（依發文時間分成前後各約 ${data.前後兩半各.join("、")} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。`,
     `7. 輸出 JSON：goal 必須是「${goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。`,
     "8. 精簡：summary、do、why、test、avoid 每欄一句話，各不超過 60 字；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
+    "9. 資料沒有圖片或影片資訊，不可提及素材類型（例如圖片、影片、輪播、貼圖）；只能談文字寫法。",
     "",
     JSON.stringify(data),
   ].join("\n");
@@ -164,7 +178,7 @@ export function parseAdvice(text: string, goal: Goal): AdviceObject {
 }
 
 // ------------------------------------------------------------------------------------------------ cache in job_summaries.llm_advice
-export type Entry = { goal: Goal; model: string; generated_at: string; n_posts: number; advice: AdviceObject };
+export type Entry = { goal: Goal; model: string; generated_at: string; n_posts: number; basis?: string; advice: AdviceObject };
 export type Store = { version: 2; legacy_text: string | null; entries: Record<string, Entry> };
 export const entryKey = (goal: string, model: string) => `${goal}|${model}`;
 

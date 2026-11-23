@@ -116,7 +116,7 @@ def test_400_drops_thinking_then_schema():
 def test_daily_quota_429_is_not_retried():
     quota = (429, {"error": {"message": "Quota exceeded ... Generate content requests per day limit exceeded on Free Tier."}})
     client, calls = _client(quota, _ok(GOOD))
-    with pytest.raises(A.AdviceError, match="每日請求額度"):
+    with pytest.raises(A.AdviceError, match="今日額度已用完，請改用快速模型"):
         A.generate("p", "k", "gemini-3.8-flash", "擴大觸及", client)
     assert len(calls) == 1  # no waiting, no second request
 
@@ -159,3 +159,14 @@ def test_advise_job_generates_both_goals_and_skips_a_goal_without_stable_feature
     assert isinstance(res["擴大觸及"], dict) and res["帶動討論"].startswith("skipped: 帶動討論")
     store = A.parse_store(Db.updates[-1]["llm_advice"])
     assert list(store["entries"]) == [f"擴大觸及|{A.DEFAULT_MODEL}"] and store["legacy_text"] == "舊版文字"
+
+
+def test_entry_stores_the_basis_and_it_changes_with_the_stable_features():
+    f1 = _feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)
+    s1 = _summary(resonance=[f1], low=[_feat("question_share", "提問句占比", "lower", 0.345, 1.0, 16, 24)])
+    b1 = A.advice_basis("擴大觸及", s1)
+    assert b1 == "共鳴型:char_median:lower:26:137:13:27|低迷型:question_share:lower:0.345:1:16:24"  # numbers printed as JavaScript does
+    assert A.advice_basis("擴大觸及", _summary(resonance=[f1])) != b1  # 低迷型 features are part of the basis
+    assert A.advice_basis("擴大觸及", _summary(available=False)) == ""
+    # an advice written under one guide no longer matches after the guide changes: the UI hides it
+    assert A.advice_basis("擴大觸及", _summary(resonance=[dict(f1, group_value=30)], low=[_feat("question_share", "提問句占比", "lower", 0.345, 1.0, 16, 24)])) != b1

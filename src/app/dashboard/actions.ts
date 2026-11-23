@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/format";
-import { buildPrompt, isGoal, isModel, withEntry, type Entry } from "@/lib/advice";
+import { adviceBasis, buildPrompt, isGoal, isModel, withEntry, type Entry } from "@/lib/advice";
 import { generateAdvice, llmEnabled } from "@/lib/llm";
 import { normalizeUsername } from "@/lib/username";
 
@@ -85,7 +85,7 @@ export async function generateAdviceAction(jobId: string, goal: string, model: s
     return { ok: false, error: e instanceof Error ? e.message : "產生失敗" };
   }
   const entry: Entry = {
-    goal, model, generated_at: new Date().toISOString(), n_posts: summary.group_analysis?.real?.writing_guide?.n_posts ?? 0, advice,
+    goal, model, generated_at: new Date().toISOString(), n_posts: summary.group_analysis?.real?.writing_guide?.n_posts ?? 0, basis: adviceBasis(goal, summary), advice,
   };
   // merge into the CURRENT cache (another goal/model may have been stored meanwhile), then save
   const { data: latest } = await supabase.from("job_summaries").select("llm_advice").eq("job_id", jobId).maybeSingle();

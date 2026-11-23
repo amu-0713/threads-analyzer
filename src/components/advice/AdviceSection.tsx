@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { generateAdviceAction } from "@/app/dashboard/actions";
 import AdviceText from "@/components/AdviceText";
 import { taipeiStamp } from "@/lib/format";
-import { DEFAULT_MODEL, GOALS, GOAL_GROUP, MODELS, entryKey, isModel, modelLabel, type Entry, type Goal, type ModelId, type GuideStatus, type StableCounts, type Store } from "@/lib/advice";
+import { DEFAULT_MODEL, FAST_MODEL, GOALS, GOAL_GROUP, MODELS, entryKey, isModel, modelLabel, type Entry, type Goal, type ModelId, type GuideStatus, type StableCounts, type Store } from "@/lib/advice";
 
 function Card({ entry }: { entry: Entry }) {
   const a = entry.advice;
@@ -31,7 +31,7 @@ function Card({ entry }: { entry: Entry }) {
   );
 }
 
-export default function AdviceSection({ jobId, store, counts, status, enabled }: { jobId: string; store: Store; counts: StableCounts | null; status: GuideStatus; enabled: boolean }) {
+export default function AdviceSection({ jobId, store, counts, bases, status, enabled }: { jobId: string; store: Store; counts: StableCounts | null; bases: Record<Goal, string>; status: GuideStatus; enabled: boolean }) {
   const [goal, setGoal] = useState<Goal>(GOALS[0]);
   const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
   const [entries, setEntries] = useState<Record<string, Entry>>(store.entries);
@@ -45,7 +45,10 @@ export default function AdviceSection({ jobId, store, counts, status, enabled }:
     return null;
   };
   const blocked = blockedFor(goal);
-  const entry = entries[entryKey(goal, model)];
+  // an entry written for an older writing guide (basis differs) is hidden until it is regenerated
+  const stored = entries[entryKey(goal, model)];
+  const entry = stored && stored.basis === bases[goal] ? stored : undefined;
+  const stale = !!stored && !entry;
 
   const run = (g: Goal, m: ModelId) =>
     startTransition(async () => {
@@ -60,7 +63,8 @@ export default function AdviceSection({ jobId, store, counts, status, enabled }:
     setGoal(g);
     setModel(m);
     setError(null);
-    if (enabled && !blockedFor(g) && !entries[entryKey(g, m)]) run(g, m);
+    const st = entries[entryKey(g, m)];
+    if (enabled && !blockedFor(g) && !(st && st.basis === bases[g])) run(g, m);
   };
 
   return (
@@ -101,17 +105,28 @@ export default function AdviceSection({ jobId, store, counts, status, enabled }:
 
       <div className="mt-3" aria-live="polite">
         {pending ? (
-          <p className="opacity-70">產生中…</p>
+          <p className="opacity-70">{model === DEFAULT_MODEL ? "產生中，約 10–20 秒" : "產生中，通常 5 秒內"}</p>
         ) : entry ? (
           <Card entry={entry} />
         ) : blocked ? (
           <p className="opacity-70">{blocked}</p>
+        ) : stale ? (
+          <p className="opacity-70">寫作清單已更新，之前產生的建議已失效，請按「產生」重新產生。</p>
         ) : !enabled ? (
           <p className="opacity-70">未設定 LLM_API_KEY，此功能停用。</p>
         ) : (
           <p className="opacity-70">尚未產生這個目標與模型的建議。</p>
         )}
-        {error && <p className="mt-2 text-red-600">產生失敗：{error}</p>}
+        {error && (
+          <div className="mt-2 text-red-600">
+            <p>{error.includes("今日額度已用完") ? error : `產生失敗：${error}`}</p>
+            {error.includes("今日額度已用完") && model !== FAST_MODEL && (
+              <button type="button" onClick={() => pick(goal, FAST_MODEL)} className="mt-2 rounded border border-current/40 px-3 py-1 text-foreground">
+                改用快速模型（{FAST_MODEL}）產生
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">

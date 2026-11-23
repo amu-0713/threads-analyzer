@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { llmEnabled } from "@/lib/llm";
 import PendingCommand from "@/components/PendingCommand";
 import AdviceSection from "@/components/advice/AdviceSection";
-import { guideStatus, parseStore, stableCounts } from "@/lib/advice";
+import { GOALS, adviceBasis, guideStatus, parseStore, stableCounts } from "@/lib/advice";
 import ReportView from "@/components/report/ReportView";
 import { UUID_RE, modeLabel } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -82,7 +82,7 @@ export default async function JobReportPage({
           <ReportView summary={summary} posts={posts ?? []} scope={scope} mode={job.mode} />
           <section className="mt-10">
             <h2 className="mb-3 text-lg font-semibold">AI 建議</h2>
-            <AdviceSection jobId={id} store={parseStore(summary.llm_advice)} counts={stableCounts(summary)} status={guideStatus(summary)} enabled={llmEnabled()} />
+            <AdviceSection jobId={id} store={parseStore(summary.llm_advice)} counts={stableCounts(summary)} bases={Object.fromEntries(GOALS.map((g) => [g, adviceBasis(g, summary)])) as Record<(typeof GOALS)[number], string>} status={guideStatus(summary)} enabled={llmEnabled()} />
           </section>
         </>
       )}

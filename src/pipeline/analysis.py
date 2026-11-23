@@ -21,8 +21,9 @@ Writing guide (group_analysis.real.writing_guide): every group is tied to a mark
 of that group are compared with the other grouped posts on four features (median length, question share, link share,
 evening share). A feature is listed ONLY if it is stable: the real posts are split by posted_at into an older and a newer
 half (groups are NOT recomputed per half), and the direction (group higher / lower than the others) must be the same in
-both halves, with at least 3 posts of the group in each half. Unstable features are dropped and not shown anywhere,
-including to the AI. Jobs with fewer than GUIDE_MIN_POSTS real posts get no guide.
+both halves, with at least 3 posts of the group in each half, AND the gap must be big enough in BOTH halves (median length:
+at least GUIDE_MIN_REL_GAP = 20% relative to the other posts; shares: at least GUIDE_MIN_PP_GAP = 10 percentage points).
+Unstable features are dropped and not shown anywhere, including to the AI. Jobs with fewer than GUIDE_MIN_POSTS real posts get no guide.
 """
 
 from __future__ import annotations
@@ -50,6 +51,8 @@ UNGROUPED = "未分組"
 GROUP_GOALS = {"共鳴型": "擴大觸及、建立好感", "討論型": "帶動討論、收集意見", "低迷型": "要避開或改寫的寫法"}
 GUIDE_MIN_POSTS = 20  # fewer real posts than this: halves of < 10 posts, no guide
 GUIDE_MIN_GROUP_PER_HALF = 3
+GUIDE_MIN_REL_GAP = 0.20  # median length: |group - others| >= 20% of the others value
+GUIDE_MIN_PP_GAP = 0.10  # shares: |group - others| >= 10 percentage points
 MIN_VIEWS_RATIO = 0.2
 MIN_SIDE_N = 3  # minimum posts per side for a comparison
 PERMUTATIONS = 5000
@@ -296,6 +299,14 @@ def _direction(a: float | None, b: float | None) -> str | None:
     return "higher" if a > b else "lower" if a < b else "same"
 
 
+def gap_big_enough(gv: float | None, ov: float | None, is_share: bool) -> bool:
+    """Minimum difference between a group and the other posts (a direction alone can be a 35 vs 38 character gap)."""
+    if gv is None or ov is None:
+        return False
+    gap = abs(gv - ov)
+    return gap >= GUIDE_MIN_PP_GAP - 1e-9 if is_share else gap >= GUIDE_MIN_REL_GAP * abs(ov) - 1e-9 and gap > 0
+
+
 def writing_guide(posts: list[dict], labels: dict[str, str]) -> dict:
     """Per group: the features that are stable across the older and the newer half of the posts (see module docstring).
 
@@ -322,12 +333,13 @@ def writing_guide(posts: list[dict], labels: dict[str, str]) -> dict:
                 gh, oh = in_g(half), out_g(half)
                 ok = len(gh) >= GUIDE_MIN_GROUP_PER_HALF and len(oh) >= 1
                 gv, ov = (fn(gh), fn(oh)) if ok else (None, None)
+                big = gap_big_enough(gv, ov, is_share)
                 per_half.append({"n_group": len(gh), "n_others": len(oh), "group_value": _round(gv, 3), "others_value": _round(ov, 3),
-                                 "direction": _direction(gv, ov)})
+                                 "direction": _direction(gv, ov) if big else None})  # a gap below the minimum counts as no direction
             d1, d2 = per_half[0]["direction"], per_half[1]["direction"]
             gv_all, ov_all = fn(G), fn(O)
             full_dir = _direction(gv_all, ov_all)
-            # stable = same real direction in both halves (group >= 3 posts in each) and the full sample agrees
+            # stable = same real direction in both halves (group >= 3 posts in each, gap above the minimum in each) and the full sample agrees
             if d1 and d1 == d2 and d1 != "same" and full_dir == d1:
                 stable.append({"key": key, "label": label, "is_share": is_share, "direction": d1, "group_value": _round(gv_all, 3),
                                "others_value": _round(ov_all, 3), "n_group": len(G), "n_others": len(O), "halves": per_half})
@@ -335,7 +347,7 @@ def writing_guide(posts: list[dict], labels: dict[str, str]) -> dict:
                 n_unstable += 1
         out_groups[g] = {"goal": GROUP_GOALS[g], "n_members": len(G), "stable_features": stable, "n_unstable": n_unstable}
     return {**base, "available": True, "halves": [len(h) for h in halves], "groups": out_groups,
-            "rule": "同一組分群結果；依發文時間切成前後兩半；方向在兩半一致、且兩半中該組都至少 3 篇的特徵才列出"}
+            "rule": "同一組分群結果；依發文時間切成前後兩半；方向在兩半一致、兩半中該組都至少 3 篇、且兩半的差距都達最小門檻（字數相差至少 20%、占比至少差 10 個百分點）的特徵才列出"}
 
 
 def rewrite_example(posts: list[dict], labels: dict[str, str], guide: dict) -> dict | None:

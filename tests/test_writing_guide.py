@@ -108,3 +108,48 @@ def test_analyze_adds_the_guide_to_real_scope_only():
             h1, h2 = f["halves"]
             assert h1["direction"] == h2["direction"] == f["direction"] != "same"
             assert h1["n_group"] >= 3 and h2["n_group"] >= 3
+
+
+# ---------------------------------------------------------------- minimum gap (relative 20 % for length, 10 points for shares)
+def _two_groups(chars_g: tuple[int, int], chars_o: tuple[int, int], q_g: tuple[float, float], q_o: tuple[float, float]):
+    """共鳴型 vs 低迷型, 6 posts each per half. chars_*/q_* = (older half, newer half) median length / question share."""
+    posts, labels, i = [], {}, 0
+    for half in (0, 1):
+        for g, chars, qshare in (("共鳴型", chars_g[half], q_g[half]), ("低迷型", chars_o[half], q_o[half])):
+            for k in range(6):
+                p = _post(i, question=k < round(qshare * 6), link=False, chars=chars)
+                posts.append(p)
+                labels[p["post_url"]] = g
+                i += 1
+    return posts, labels
+
+
+def _keys(posts, labels, group="共鳴型"):
+    return {f["key"] for f in writing_guide(posts, labels)["groups"][group]["stable_features"]}
+
+
+def test_small_gap_is_dropped_even_when_the_direction_is_the_same():
+    # length: 38 vs 35 chars (about 9 %) in both halves; questions: 100 % vs 0 % in both halves
+    posts, labels = _two_groups((38, 38), (35, 35), (1.0, 1.0), (0.0, 0.0))
+    assert _keys(posts, labels) == {"question_share"}
+
+
+def test_gap_must_be_big_enough_in_both_halves():
+    # length: 100 vs 50 in the older half (+100 %) but 52 vs 50 in the newer half (+4 %) -> dropped
+    posts, labels = _two_groups((100, 52), (50, 50), (1.0, 1.0), (0.0, 0.0))
+    assert "char_median" not in _keys(posts, labels)
+    # question share: 4/6 vs 3/6 in the older half (17 points), 3/6 vs 3/6 in the newer half (no gap) -> dropped
+    posts, labels = _two_groups((100, 100), (50, 50), (4 / 6, 3 / 6), (3 / 6, 3 / 6))
+    assert "question_share" not in _keys(posts, labels)  # newer half: 50 % vs 50 %
+
+
+def test_exact_threshold_values():
+    from src.pipeline.analysis import gap_big_enough
+
+    assert gap_big_enough(60, 50, False)          # exactly +20 % of the others value
+    assert not gap_big_enough(59, 50, False)      # +18 %
+    assert gap_big_enough(40, 50, False)          # exactly -20 %
+    assert not gap_big_enough(35, 38, False)      # the pchome24h case: about 8 %
+    assert gap_big_enough(0.6, 0.5, True)         # exactly 10 points
+    assert not gap_big_enough(0.55, 0.5, True)    # 5 points
+    assert not gap_big_enough(None, 0.5, True) and not gap_big_enough(50, 50, False)

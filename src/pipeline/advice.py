@@ -90,6 +90,24 @@ def stable_counts(summary: dict) -> dict | None:
     return {g: len((wg.get("groups", {}).get(g) or {}).get("stable_features") or []) for g in ("共鳴型", "討論型", "低迷型")}
 
 
+def advice_basis(goal: str, summary: dict) -> str:
+    """Fingerprint of the stable features behind one goal's advice (mirrors adviceBasis in advice.ts)."""
+    wg = ((summary.get("group_analysis") or {}).get("real") or {}).get("writing_guide") or {}
+    if not wg.get("available"):
+        return ""
+
+    def part(g: str) -> str:
+        fs = (wg.get("groups", {}).get(g) or {}).get("stable_features") or []
+        return ",".join(f"{g}:{f['key']}:{f['direction']}:{_js(f['group_value'])}:{_js(f['others_value'])}:{f['n_group']}:{f['n_others']}" for f in fs)
+
+    return f"{part(GOAL_GROUP[goal])}|{part('低迷型')}"
+
+
+def _js(x: float) -> str:
+    """Number as JavaScript prints it in a template string (1.0 -> '1', 0.345 -> '0.345')."""
+    return str(int(x)) if float(x).is_integer() else repr(float(x))
+
+
 def advice_input(username: str, goal: str, summary: dict) -> dict:
     ga = (summary.get("group_analysis") or {}).get("real") or {}
     wg = ga.get("writing_guide") or {}
@@ -140,6 +158,7 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
         f"6. 依實際篇數描述樣本：真實貼文 {data['真實貼文數']} 篇（依發文時間分成前後各約 {'、'.join(str(x) for x in data['前後兩半各'])} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。",
         f"7. 輸出 JSON：goal 必須是「{goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。",
         "8. 精簡：summary、do、why、test、avoid 每欄一句話，各不超過 60 字；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
+        "9. 資料沒有圖片或影片資訊，不可提及素材類型（例如圖片、影片、輪播、貼圖）；只能談文字寫法。",
         "",
         json.dumps(data, ensure_ascii=False, separators=(",", ":")),
     ])
@@ -221,7 +240,7 @@ def _request_text(client: httpx.Client, model: str, key: str, prompt: str, retri
         if res.status_code not in (429, 500, 502, 503, 504):
             break
         if res.status_code == 429 and "per day" in res.text.lower():  # a per-day quota does not recover within seconds
-            raise AdviceError(f"{model} 的每日請求額度已用完（Gemini 免費額度），請改選另一個模型，或隔天再試")
+            raise AdviceError("今日額度已用完，請改用快速模型" if model == DEFAULT_MODEL else "今日額度已用完，請明天再試")
         wait = 3 * 2**attempt
         log.warning("%s HTTP %s, retrying in %ss", model, res.status_code, wait)
         time.sleep(wait)
@@ -285,7 +304,7 @@ def advise_job(db: Db, job: dict, key: str, model: str, goals: list[str], dry_ru
             results[goal] = f"skipped: {e}"
             continue
         entry = {"goal": goal, "model": model, "generated_at": datetime.now(timezone.utc).isoformat(),
-                 "n_posts": summary["group_analysis"]["real"]["writing_guide"]["n_posts"], "advice": advice}
+                 "n_posts": summary["group_analysis"]["real"]["writing_guide"]["n_posts"], "basis": advice_basis(goal, summary), "advice": advice}
         raw = with_entry(raw, entry)
         results[goal] = entry
     if not dry_run and any(isinstance(v, dict) for v in results.values()):
