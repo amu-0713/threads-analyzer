@@ -70,14 +70,14 @@ async function requestText(key: string, model: ModelId, prompt: string): Promise
 
 /** Structured advice for one goal. A reply that is not valid JSON / misses a field / uses inferential wording is retried once;
  *  if it still fails the reason is thrown and nothing is stored. */
-export async function generateAdvice(model: ModelId, goal: Goal, prompt: string): Promise<AdviceObject> {
+export async function generateAdvice(model: ModelId, goal: Goal, prompt: string, nActions?: number): Promise<AdviceObject> {
   const key = process.env.LLM_API_KEY;
   if (!key) throw new Error("LLM_API_KEY is not set");
   let lastError = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = await requestText(key, model, attempt === 0 ? prompt : `${prompt}\n\n（上一次的回應不合格：${lastError}。請修正後重新輸出。）`);
     try {
-      return parseAdvice(text, goal);
+      return parseAdvice(text, goal, nActions);
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
       console.log(`[llm] invalid answer (attempt ${attempt + 1}): ${lastError}`);

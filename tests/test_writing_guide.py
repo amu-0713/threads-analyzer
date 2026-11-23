@@ -101,7 +101,7 @@ def test_analyze_adds_the_guide_to_real_scope_only():
     res = analyze(rows)
     real, allscope = res["group_analysis"]["real"], res["group_analysis"]["all"]
     assert real["writing_guide"]["available"] and "writing_guide" not in allscope
-    assert real["groups"]["共鳴型"]["goal"] == "擴大觸及、建立好感" and real["groups"]["討論型"]["goal"] == "帶動討論、收集意見"
+    assert real["groups"]["共鳴型"]["goal"] == "提高按讚、建立好感" and real["groups"]["討論型"]["goal"] == "帶動討論、收集意見"
     # every listed feature really is stable: same non-"same" direction in both halves with >= 3 group posts each
     for g, grp in real["writing_guide"]["groups"].items():
         for f in grp["stable_features"]:

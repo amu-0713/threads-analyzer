@@ -4,15 +4,17 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const GOALS = ["擴大觸及", "帶動討論"] as const;
+export const GOALS = ["提高按讚、建立好感", "帶動討論"] as const;
 export type Goal = (typeof GOALS)[number];
 
 /** goal -> the group whose stable features describe it; 低迷型 is always the "avoid" evidence */
-export const GOAL_GROUP: Record<Goal, "共鳴型" | "討論型"> = { 擴大觸及: "共鳴型", 帶動討論: "討論型" };
+export const GOAL_GROUP: Record<Goal, "共鳴型" | "討論型"> = { "提高按讚、建立好感": "共鳴型", 帶動討論: "討論型" };
 export const GOAL_TEXT: Record<Goal, string> = {
-  擴大觸及: "擴大觸及、建立好感（共鳴型：按讚百分位高）",
+  "提高按讚、建立好感": "提高按讚、建立好感（共鳴型：按讚百分位高）",
   帶動討論: "帶動討論、收集意見（討論型：回覆百分位高）",
 };
+/** the groups are defined by like / reply percentiles, so each goal is verified with that rate (there is no reach data) */
+export const GOAL_METRIC: Record<Goal, "按讚率中位數" | "回覆率中位數"> = { "提高按讚、建立好感": "按讚率中位數", 帶動討論: "回覆率中位數" };
 
 /** Only these models can be chosen; the browser sends an id and the server checks it against this list. */
 export const MODELS = [
@@ -69,7 +71,7 @@ export function stableCounts(summary: { group_analysis?: any }): StableCounts | 
 
 /** Bump when the prompt text changes (src/pipeline/advice.py has the same number; tests/test_advice.py fails if the prompt changes
  *  without this being bumped). It is part of the basis, so advice written with an older prompt is hidden and must be regenerated. */
-export const PROMPT_VERSION = 6;
+export const PROMPT_VERSION = 7;
 
 /** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
  *  current one was written for an older guide or prompt: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
@@ -98,6 +100,8 @@ export function adviceInput(username: string, goal: Goal, summary: { group_analy
     帳號: `@${username}`,
     目標: goal,
     目標說明: GOAL_TEXT[goal],
+    驗證指標: GOAL_METRIC[goal],
+    建議點數: feats.length,
     真實貼文數: wg.n_posts,
     前後兩半各: wg.halves,
     分組篇數: { 共鳴型: ga.counts?.共鳴型, 討論型: ga.counts?.討論型, 低迷型: ga.counts?.低迷型 },
@@ -121,16 +125,16 @@ export function buildPrompt(username: string, goal: Goal, summary: { group_analy
     "你是社群行銷顧問。以下是某個 Threads 帳號「僅真實貼文」的分析摘要（JSON）。",
     `任務：針對目標「${goal}」，告訴使用者「下一篇貼文」可以怎麼寫。`,
     "規則：",
-    "1. 只能使用資料裡列出的穩定特徵。每點 actions 的 why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，四個部分都要有，數字照抄該特徵在資料中的「篇數」「方向」與兩個值，不可省略、四捨五入或改寫；特徵必須出現在「目標組穩定特徵」或「低迷型穩定特徵」。",
-    "2. do 是使用者明天就能照著發文的具體寫法（例如：首篇控制在 120 字內，結尾用一個問句邀請回覆），不能只是統計事實；每一點 do 只依據一個特徵（一點只談一個特徵，不要在同一點同時談字數與連結等兩件事）。",
-    "3. test 說明怎麼驗證（例如：連續 4 篇 A/B 對照，比較回覆率中位數），要寫出比較的指標與篇數。",
-    "4. avoid 用一句話說要避開什麼，只依據一個低迷型穩定特徵（不要把兩個特徵寫在同一句），句末用括號照規則 1 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
-    "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先；不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；do 與 avoid 裡的數字只能使用資料中出現的數字，不可自己新增門檻（例如資料是 82 字就不能寫 80 字）。",
-    `6. 依實際篇數描述樣本：真實貼文 ${data.真實貼文數} 篇（依發文時間分成前後各約 ${data.前後兩半各.join("、")} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。`,
-    `7. 輸出 JSON：goal 必須是「${goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。`,
-    "8. 精簡：每欄一句話；summary、do、test 各不超過 60 字，why 與 avoid 依規則 1、4 的格式；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
-    "9. 資料沒有圖片或影片資訊，不可提及素材類型（例如圖片、影片、輪播、貼圖）；只能談文字寫法。",
-    "10. summary、do、avoid 與 why 一樣，只能引用「目標組穩定特徵」或「低迷型穩定特徵」裡的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議；do 不要指定貼文主題或內容題材，只寫文字寫法。",
+    `1. 只能使用資料裡的穩定特徵。actions 剛好 ${data.建議點數} 點：「目標組穩定特徵」每個特徵各寫一點（依資料順序，同一個特徵不可寫兩點）；「低迷型穩定特徵」只能用在 avoid，不可寫進 do。`,
+    "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數寫成「控制在約 N 字左右以內」或「寫到約 N 字左右以上」，N 取自目標組自己的值（可取到十位），不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。",
+    "3. 晚間的定義是 18:00–23:59。建議不在晚間發時寫「18 點以前發」，不可寫「23 點以後」。",
+    "4. why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，數字照抄資料中的篇數、方向與兩個值，不可省略或改寫。",
+    `5. test 寫怎麼驗證：連續幾篇照做，和沒照做的貼文比較「${data.驗證指標}」；只能用這個指標，不可寫觸及人數、觀看數或其他指標。`,
+    "6. avoid 用一句話說要避開什麼，只依據一個低迷型穩定特徵，同樣只寫方向或「要不要」，句末用括號照規則 4 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
+    "7. 用中立字詞：不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語，也不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；不可使用「觸及」這個詞（資料沒有觸及數）。",
+    `8. 依實際篇數描述樣本：真實貼文 ${data.真實貼文數} 篇（依發文時間分成前後各約 ${data.前後兩半各.join("、")} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 要提醒仍需實際測試。`,
+    "9. summary、do、avoid 與 why 一樣，只能引用穩定清單內的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）；資料沒有圖片或影片資訊，不可提及素材類型；do 不要指定貼文主題或內容題材。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議。",
+    `10. 輸出 JSON：goal 必須是「${goal}」；summary 一句話（不超過 60 字，這個帳號要達成這個目標，下一篇該怎麼寫）；actions 剛好 ${data.建議點數} 點，每點有 do、why、test（do、test 各不超過 60 字）；avoid 一句話。`,
     "",
     JSON.stringify(data),
   ].join("\n");
@@ -148,7 +152,7 @@ export const RESPONSE_SCHEMA = {
     summary: { type: "STRING" },
     actions: {
       type: "ARRAY",
-      minItems: 2,
+      minItems: 1,
       maxItems: 4,
       items: {
         type: "OBJECT",
@@ -164,8 +168,33 @@ export const RESPONSE_SCHEMA = {
 // inferential wording + causal promises (a reply using any of these is retried once with the reason, never stored)
 const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成/;
 
-/** Returns the advice object, or throws with the reason (invalid JSON, missing fields, inferential wording). */
-export function parseAdvice(text: string, goal: Goal): AdviceObject {
+const SHARE_TARGET = /\d+(?:\.\d+)?\s*[%％]/;
+const LENGTH = /(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?/g;
+const LATE_NIGHT = /23\s*點\s*(?:以後|後)|午夜|凌晨/;
+
+/** Semantic rules that can be checked without a model (mirrored by _content_problem in advice.py). Returns the first problem or null. */
+export function contentProblem(obj: AdviceObject, goal: Goal, nActions?: number): string | null {
+  const n = obj.actions.length;
+  if (nActions ? n !== nActions : n < 1 || n > 4) return nActions ? `actions 必須剛好 ${nActions} 點（目標組每個穩定特徵一點）` : "actions 必須是 1–4 點";
+  const all = [obj.summary, obj.avoid, ...obj.actions.flatMap((a) => [a.do, a.why, a.test])].join(" ");
+  if (FORBIDDEN.test(all)) return "內容含有推論用語";
+  if (all.includes("觸及")) return "不可使用「觸及」（沒有觸及資料，請用按讚率或回覆率）";
+  const metric = GOAL_METRIC[goal].slice(0, 3); // 按讚率 / 回覆率
+  const other = metric === "按讚率" ? "回覆率" : "按讚率";
+  for (const t of [obj.summary, ...obj.actions.map((a) => a.do)]) {
+    if (SHARE_TARGET.test(t)) return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發";
+    for (const m of t.matchAll(LENGTH)) if (!m[1] && !m[3]) return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數";
+    if (LATE_NIGHT.test(t)) return "晚間是 18:00–23:59；不在晚間發請寫「18 點以前」";
+  }
+  for (const a of obj.actions) {
+    if (a.do.includes("低迷型")) return "do 只能依據目標組的穩定特徵；低迷型只能用在 avoid";
+    if (!a.test.includes(metric) || a.test.includes(other)) return `test 必須比較${GOAL_METRIC[goal]}`;
+  }
+  return null;
+}
+
+/** Returns the advice object, or throws with the reason (invalid JSON, missing fields, wording or semantic rule broken). */
+export function parseAdvice(text: string, goal: Goal, nActions?: number): AdviceObject {
   let obj: any;
   try {
     obj = JSON.parse(text);
@@ -175,12 +204,18 @@ export function parseAdvice(text: string, goal: Goal): AdviceObject {
   const str = (v: unknown) => typeof v === "string" && v.trim().length > 0;
   if (obj?.goal !== goal) throw new Error(`goal 欄位不是「${goal}」`);
   if (!str(obj.summary)) throw new Error("缺少 summary");
-  if (!Array.isArray(obj.actions) || obj.actions.length < 2 || obj.actions.length > 4) throw new Error("actions 必須是 2–4 點");
+  if (!Array.isArray(obj.actions) || obj.actions.length < 1 || obj.actions.length > 4) throw new Error("actions 必須是 1–4 點");
   for (const a of obj.actions) if (!str(a?.do) || !str(a?.why) || !str(a?.test)) throw new Error("某一點缺少 do／why／test");
   if (!str(obj.avoid)) throw new Error("缺少 avoid");
-  const all = [obj.summary, obj.avoid, ...obj.actions.flatMap((a: Action) => [a.do, a.why, a.test])].join(" ");
-  if (FORBIDDEN.test(all)) throw new Error("內容含有推論用語");
-  return { goal, summary: obj.summary.trim(), actions: obj.actions.map((a: Action) => ({ do: a.do.trim(), why: a.why.trim(), test: a.test.trim() })), avoid: obj.avoid.trim() };
+  const out: AdviceObject = { goal, summary: obj.summary.trim(), actions: obj.actions.map((a: Action) => ({ do: a.do.trim(), why: a.why.trim(), test: a.test.trim() })), avoid: obj.avoid.trim() };
+  const problem = contentProblem(out, goal, nActions);
+  if (problem) throw new Error(problem);
+  return out;
+}
+
+/** How many actions the advice for a goal must have: one per stable feature of the goal's group. */
+export function actionCount(goal: Goal, summary: { group_analysis?: any }): number {
+  return (summary.group_analysis?.real?.writing_guide?.groups?.[GOAL_GROUP[goal]]?.stable_features ?? []).length;
 }
 
 // ------------------------------------------------------------------------------------------------ cache in job_summaries.llm_advice

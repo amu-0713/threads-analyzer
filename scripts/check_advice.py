@@ -40,7 +40,8 @@ import json, math, re  # noqa: E402
 
 from src.pipeline.advice import advice_basis  # noqa: E402
 
-GOAL_GROUP = {"擴大觸及": "共鳴型", "帶動討論": "討論型"}
+GOAL_GROUP = {"提高按讚、建立好感": "共鳴型", "帶動討論": "討論型"}
+GOAL_METRIC = {"共鳴型": "按讚率", "討論型": "回覆率"}  # groups are defined by like / reply percentiles
 hu = lambda x: math.floor(x + 0.5)  # JS Math.round
 fmt = lambda f, v: f"{hu(v*100)}%" if f["is_share"] else f"{hu(v)} 字"
 FORBID = re.compile(r"顯著|明顯優於|統計上|p\s*值|p\s*=|證明")
@@ -77,6 +78,8 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
     try: store = json.loads(s["llm_advice"])
     except Exception: store = {"entries": {}}
     for key, e in sorted(store.get("entries", {}).items()):
+        if e.get("goal") not in GOAL_GROUP:
+            continue  # a goal that no longer exists (renamed in v7): the UI ignores it too
         goal, grp = e["goal"], GOAL_GROUP[e["goal"]]
         if e.get("basis") != advice_basis(goal, s):
             continue  # written for an older guide: the UI hides it too
@@ -138,6 +141,44 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
                     names_value = re.sub(r"\D", "", fmt(f, f["group_value"])) in re.findall(r"\d+", ac["do"])
                     if not names_value and ((f["direction"] == "lower" and up) or (f["direction"] == "higher" and down)):
                         flags.append((tag, f"action {i} do", "做法的方向疑似和特徵相反（請人工確認）", f"{f['label']}：{grp}{'較低' if f['direction']=='lower' else '較高'}；do={ac['do'][:40]}"))
+        # 5) v7 rules (each is also enforced by the server-side validator; listed here so old advice is caught too)
+        n_target = len(tgt)
+        if len(a["actions"]) != n_target:
+            flags.append((tag, "actions", "點數和目標組穩定特徵數不同", f"{len(a['actions'])} 點，目標組穩定特徵 {n_target} 個"))
+        seen = {}
+        for i, ac in enumerate(a["actions"], 1):
+            # which target feature this action is about: the one its why cites (fall back to the do)
+            cited = [f["key"] for f in tgt if re.search(TOPICS[f["key"]], ac["why"]) and (grp in ac["why"] or "低迷型" not in ac["why"])]
+            if not cited:
+                cited = [f["key"] for f in tgt if re.search(TOPICS[f["key"]], ac["do"])]
+            for key in cited[:1]:
+                if key in seen:
+                    flags.append((tag, f"action {i}", "與前面的點重複同一個特徵", f"{LABEL[key]}（同 action {seen[key]}）"))
+                seen.setdefault(key, i)
+            target_keys = {f["key"] for f in tgt}
+            low_only = [f for f in low if f["key"] not in target_keys and re.search(TOPICS[f["key"]], ac["do"])]
+            if "低迷型" in ac["do"] or "低迷型" in ac["why"] or low_only:
+                flags.append((tag, f"action {i} do", "do 引用了低迷型特徵（低迷型只能用在 avoid）", ac["do"][:50]))
+            if re.search(r"\d+\s*[%％]", ac["do"]):
+                flags.append((tag, f"action {i} do", "把占比寫成百分比目標（應寫這篇要不要）", ac["do"][:50]))
+            for m in re.finditer(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?", ac["do"]):
+                if not m.group(1) and not m.group(3):
+                    flags.append((tag, f"action {i} do", "字數寫成單篇精確目標（應寫大約範圍）", m.group(0)))
+            # numbers in a do must come from the target group's own values, never the "others" side or 低迷型
+            own = {re.sub(r"\D", "", fmt(f, f["group_value"])) for f in tgt}
+            foreign = {re.sub(r"\D", "", fmt(f, f["others_value"])) for f in tgt} | {re.sub(r"\D", "", fmt(f, v)) for f in low for v in (f["group_value"], f["others_value"])}
+            bad = [x for x in re.findall(r"\d+", re.sub(r"18\s*點?\s*[–\-~至到]\s*23\s*點?", "", ac["do"])) if x in foreign and x not in own]
+            if bad:
+                flags.append((tag, f"action {i} do", "do 用了「其他貼文」或低迷型的數值當目標", "、".join(bad)))
+            if re.search(r"23\s*點\s*(?:以後|後)|午夜|凌晨", ac["do"]):
+                flags.append((tag, f"action {i} do", "時段寫法不符定義（晚間 18:00–23:59，非晚間寫 18 點以前）", ac["do"][:50]))
+            metric = GOAL_METRIC[grp]; other = "回覆率" if metric == "按讚率" else "按讚率"
+            if metric not in ac["test"] or other in ac["test"] or re.search(r"觸及|觀看|互動率|曝光", ac["test"]):
+                flags.append((tag, f"action {i} test", f"驗證指標與組別不符（{grp}應比{metric}中位數）", ac["test"][:50]))
+        if "觸及" in whole:
+            flags.append((tag, "全文", "使用了「觸及」（沒有觸及資料）", ""))
+        if re.search(r"\d+\s*[%％]", a["summary"]):
+            flags.append((tag, "summary", "把占比寫成百分比目標", a["summary"][:50]))
 print("\n".join(out))
 print(f"\n\n# 檢查範圍：{n_checked} 份建議（只含目前穩定清單下產生的；舊清單下的建議不算）")
 print("\n## 腳本檢查結果（違規 / 疑似）", len(flags))

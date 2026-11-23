@@ -4,7 +4,7 @@
     python -m src.pipeline.advice --all [--mode login]    # every finished job that has a summary
     python -m src.pipeline.advice --all --dry-run         # print the advice, store nothing
 
-Both goals (擴大觸及 / 帶動討論) are generated for each job. Needs LLM_API_KEY in .env (Gemini API key) plus the usual
+Both goals (提高按讚、建立好感 / 帶動討論) are generated for each job. Needs LLM_API_KEY in .env (Gemini API key) plus the usual
 SUPABASE_* values, and the job's analysis must already contain the writing guide (re-run `run --analyze-only` once).
 
 This file mirrors src/lib/advice.ts + src/lib/llm.ts (the dashboard's goal / model switch): same whitelist of models,
@@ -31,12 +31,14 @@ from .db import Db
 
 log = logging.getLogger("pipeline.advice")
 
-GOALS = ["擴大觸及", "帶動討論"]
-GOAL_GROUP = {"擴大觸及": "共鳴型", "帶動討論": "討論型"}
+GOALS = ["提高按讚、建立好感", "帶動討論"]
+GOAL_GROUP = {"提高按讚、建立好感": "共鳴型", "帶動討論": "討論型"}
 GOAL_TEXT = {
-    "擴大觸及": "擴大觸及、建立好感（共鳴型：按讚百分位高）",
+    "提高按讚、建立好感": "提高按讚、建立好感（共鳴型：按讚百分位高）",
     "帶動討論": "帶動討論、收集意見（討論型：回覆百分位高）",
 }
+# the groups are defined by like / reply percentiles, so each goal is verified with that rate (there is no reach data)
+GOAL_METRIC = {"提高按讚、建立好感": "按讚率中位數", "帶動討論": "回覆率中位數"}
 # Only these can be chosen (UI: dropdown; CLI: --model). Default = first.
 MODELS = ["gemini-3.8-flash", "gemini-3.1-flash-lite"]
 DEFAULT_MODEL = MODELS[0]
@@ -49,7 +51,7 @@ RESPONSE_SCHEMA = {
         "goal": {"type": "STRING", "enum": GOALS},
         "summary": {"type": "STRING"},
         "actions": {
-            "type": "ARRAY", "minItems": 2, "maxItems": 4,
+            "type": "ARRAY", "minItems": 1, "maxItems": 4,
             "items": {"type": "OBJECT", "properties": {"do": {"type": "STRING"}, "why": {"type": "STRING"}, "test": {"type": "STRING"}},
                       "required": ["do", "why", "test"]},
         },
@@ -92,7 +94,7 @@ def stable_counts(summary: dict) -> dict | None:
 
 
 # Bump together with PROMPT_VERSION in src/lib/advice.ts whenever the prompt text changes (a test fails otherwise).
-PROMPT_VERSION = 6
+PROMPT_VERSION = 7
 
 
 def advice_basis(goal: str, summary: dict) -> str:
@@ -131,6 +133,8 @@ def advice_input(username: str, goal: str, summary: dict) -> dict:
         "帳號": f"@{username}",
         "目標": goal,
         "目標說明": GOAL_TEXT[goal],
+        "驗證指標": GOAL_METRIC[goal],
+        "建議點數": len(feats),
         "真實貼文數": wg["n_posts"],
         "前後兩半各": wg["halves"],
         "分組篇數": {"共鳴型": counts.get("共鳴型"), "討論型": counts.get("討論型"), "低迷型": counts.get("低迷型")},
@@ -155,23 +159,55 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
         "你是社群行銷顧問。以下是某個 Threads 帳號「僅真實貼文」的分析摘要（JSON）。",
         f"任務：針對目標「{goal}」，告訴使用者「下一篇貼文」可以怎麼寫。",
         "規則：",
-        "1. 只能使用資料裡列出的穩定特徵。每點 actions 的 why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，四個部分都要有，數字照抄該特徵在資料中的「篇數」「方向」與兩個值，不可省略、四捨五入或改寫；特徵必須出現在「目標組穩定特徵」或「低迷型穩定特徵」。",
-        "2. do 是使用者明天就能照著發文的具體寫法（例如：首篇控制在 120 字內，結尾用一個問句邀請回覆），不能只是統計事實；每一點 do 只依據一個特徵（一點只談一個特徵，不要在同一點同時談字數與連結等兩件事）。",
-        "3. test 說明怎麼驗證（例如：連續 4 篇 A/B 對照，比較回覆率中位數），要寫出比較的指標與篇數。",
-        "4. avoid 用一句話說要避開什麼，只依據一個低迷型穩定特徵（不要把兩個特徵寫在同一句），句末用括號照規則 1 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
-        "5. 用中立字詞描述；不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語；比率一律用百分比（例如 3.59%）；中位數優先；不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；do 與 avoid 裡的數字只能使用資料中出現的數字，不可自己新增門檻（例如資料是 82 字就不能寫 80 字）。",
-        f"6. 依實際篇數描述樣本：真實貼文 {data['真實貼文數']} 篇（依發文時間分成前後各約 {'、'.join(str(x) for x in data['前後兩半各'])} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 或 why 要提醒仍需實際測試。",
-        f"7. 輸出 JSON：goal 必須是「{goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。",
-        "8. 精簡：每欄一句話；summary、do、test 各不超過 60 字，why 與 avoid 依規則 1、4 的格式；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
-        "9. 資料沒有圖片或影片資訊，不可提及素材類型（例如圖片、影片、輪播、貼圖）；只能談文字寫法。",
-        "10. summary、do、avoid 與 why 一樣，只能引用「目標組穩定特徵」或「低迷型穩定特徵」裡的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議；do 不要指定貼文主題或內容題材，只寫文字寫法。",
+        f"1. 只能使用資料裡的穩定特徵。actions 剛好 {data['建議點數']} 點：「目標組穩定特徵」每個特徵各寫一點（依資料順序，同一個特徵不可寫兩點）；「低迷型穩定特徵」只能用在 avoid，不可寫進 do。",
+        "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數寫成「控制在約 N 字左右以內」或「寫到約 N 字左右以上」，N 取自目標組自己的值（可取到十位），不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。",
+        "3. 晚間的定義是 18:00–23:59。建議不在晚間發時寫「18 點以前發」，不可寫「23 點以後」。",
+        "4. why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，數字照抄資料中的篇數、方向與兩個值，不可省略或改寫。",
+        f"5. test 寫怎麼驗證：連續幾篇照做，和沒照做的貼文比較「{data['驗證指標']}」；只能用這個指標，不可寫觸及人數、觀看數或其他指標。",
+        "6. avoid 用一句話說要避開什麼，只依據一個低迷型穩定特徵，同樣只寫方向或「要不要」，句末用括號照規則 4 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
+        "7. 用中立字詞：不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語，也不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；不可使用「觸及」這個詞（資料沒有觸及數）。",
+        f"8. 依實際篇數描述樣本：真實貼文 {data['真實貼文數']} 篇（依發文時間分成前後各約 {'、'.join(str(x) for x in data['前後兩半各'])} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 要提醒仍需實際測試。",
+        "9. summary、do、avoid 與 why 一樣，只能引用穩定清單內的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）；資料沒有圖片或影片資訊，不可提及素材類型；do 不要指定貼文主題或內容題材。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議。",
+        f"10. 輸出 JSON：goal 必須是「{goal}」；summary 一句話（不超過 60 字，這個帳號要達成這個目標，下一篇該怎麼寫）；actions 剛好 {data['建議點數']} 點，每點有 do、why、test（do、test 各不超過 60 字）；avoid 一句話。",
         "",
         json.dumps(data, ensure_ascii=False, separators=(",", ":")),
     ])
 
 
 # ------------------------------------------------------------------------------------------------ validation + cache
-def parse_advice(text: str, goal: str) -> dict:
+SHARE_TARGET = re.compile(r"\d+(?:\.\d+)?\s*[%％]")
+LENGTH = re.compile(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?")
+LATE_NIGHT = re.compile(r"23\s*點\s*(?:以後|後)|午夜|凌晨")
+
+
+def _content_problem(obj: dict, goal: str, n_actions: int | None = None) -> str | None:
+    """Semantic rules that can be checked without a model (mirrors contentProblem in advice.ts). First problem or None."""
+    n = len(obj["actions"])
+    if (n != n_actions) if n_actions else not 1 <= n <= 4:
+        return f"actions 必須剛好 {n_actions} 點（目標組每個穩定特徵一點）" if n_actions else "actions 必須是 1–4 點"
+    blob = " ".join([obj["summary"], obj["avoid"], *[a[k] for a in obj["actions"] for k in ("do", "why", "test")]])
+    if FORBIDDEN.search(blob):
+        return "內容含有推論用語"
+    if "觸及" in blob:
+        return "不可使用「觸及」（沒有觸及資料，請用按讚率或回覆率）"
+    metric = GOAL_METRIC[goal][:3]  # 按讚率 / 回覆率
+    other = "回覆率" if metric == "按讚率" else "按讚率"
+    for t in [obj["summary"], *[a["do"] for a in obj["actions"]]]:
+        if SHARE_TARGET.search(t):
+            return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發"
+        if any(not m.group(1) and not m.group(3) for m in LENGTH.finditer(t)):
+            return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數"
+        if LATE_NIGHT.search(t):
+            return "晚間是 18:00–23:59；不在晚間發請寫「18 點以前」"
+    for a in obj["actions"]:
+        if "低迷型" in a["do"]:
+            return "do 只能依據目標組的穩定特徵；低迷型只能用在 avoid"
+        if metric not in a["test"] or other in a["test"]:
+            return f"test 必須比較{GOAL_METRIC[goal]}"
+    return None
+
+
+def parse_advice(text: str, goal: str, n_actions: int | None = None) -> dict:
     try:
         obj = json.loads(text)
     except ValueError:
@@ -182,19 +218,26 @@ def parse_advice(text: str, goal: str) -> dict:
     if not s(obj.get("summary")):
         raise AdviceError("缺少 summary")
     acts = obj.get("actions")
-    if not isinstance(acts, list) or not 2 <= len(acts) <= 4:
-        raise AdviceError("actions 必須是 2–4 點")
+    if not isinstance(acts, list) or not 1 <= len(acts) <= 4:
+        raise AdviceError("actions 必須是 1–4 點")
     for a in acts:
         if not (isinstance(a, dict) and s(a.get("do")) and s(a.get("why")) and s(a.get("test"))):
             raise AdviceError("某一點缺少 do／why／test")
     if not s(obj.get("avoid")):
         raise AdviceError("缺少 avoid")
-    blob = " ".join([obj["summary"], obj["avoid"], *[a[k] for a in acts for k in ("do", "why", "test")]])
-    if FORBIDDEN.search(blob):
-        raise AdviceError("內容含有推論用語")
-    return {"goal": goal, "summary": obj["summary"].strip(),
-            "actions": [{"do": a["do"].strip(), "why": a["why"].strip(), "test": a["test"].strip()} for a in acts],
-            "avoid": obj["avoid"].strip()}
+    out = {"goal": goal, "summary": obj["summary"].strip(),
+           "actions": [{"do": a["do"].strip(), "why": a["why"].strip(), "test": a["test"].strip()} for a in acts],
+           "avoid": obj["avoid"].strip()}
+    problem = _content_problem(out, goal, n_actions)
+    if problem:
+        raise AdviceError(problem)
+    return out
+
+
+def action_count(goal: str, summary: dict) -> int:
+    """How many actions the advice for a goal must have: one per stable feature of the goal's group."""
+    wg = ((summary.get("group_analysis") or {}).get("real") or {}).get("writing_guide") or {}
+    return len((wg.get("groups", {}).get(GOAL_GROUP[goal]) or {}).get("stable_features") or [])
 
 
 def entry_key(goal: str, model: str) -> str:
@@ -272,7 +315,7 @@ def _request_text(client: httpx.Client, model: str, key: str, prompt: str, retri
     return text
 
 
-def generate(prompt: str, key: str, model: str, goal: str, client: httpx.Client | None = None) -> dict:
+def generate(prompt: str, key: str, model: str, goal: str, client: httpx.Client | None = None, n_actions: int | None = None) -> dict:
     """Valid advice or an AdviceError. An invalid reply (bad JSON, missing field, inferential wording) is retried once."""
     if model not in MODELS:
         raise AdviceError(f"model {model!r} is not on the whitelist {MODELS}")
@@ -283,7 +326,7 @@ def generate(prompt: str, key: str, model: str, goal: str, client: httpx.Client 
         for attempt in range(2):
             text = _request_text(client, model, key, prompt if attempt == 0 else f"{prompt}\n\n（上一次的回應不合格：{last}。請修正後重新輸出。）")
             try:
-                return parse_advice(text, goal)
+                return parse_advice(text, goal, n_actions)
             except AdviceError as e:
                 last = str(e)
                 log.warning("invalid answer (attempt %d): %s", attempt + 1, last)
@@ -305,7 +348,7 @@ def advise_job(db: Db, job: dict, key: str, model: str, goals: list[str], dry_ru
     raw = summary.get("llm_advice")
     for goal in goals:
         try:
-            advice = generate(build_prompt(job["username"], goal, summary), key, model, goal)
+            advice = generate(build_prompt(job["username"], goal, summary), key, model, goal, n_actions=action_count(goal, summary))
         except AdviceError as e:
             results[goal] = f"skipped: {e}"
             continue

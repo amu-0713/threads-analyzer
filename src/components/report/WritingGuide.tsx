@@ -1,7 +1,7 @@
 import type { GroupName, StableFeature, WritingGuide as Guide } from "@/lib/types";
 
 const ORDER: GroupName[] = ["共鳴型", "討論型", "低迷型"];
-const GOAL: Record<GroupName, string> = { 共鳴型: "擴大觸及、建立好感", 討論型: "帶動討論、收集意見", 低迷型: "要避開或改寫的寫法" };
+const GOAL: Record<GroupName, string> = { 共鳴型: "提高按讚、建立好感", 討論型: "帶動討論、收集意見", 低迷型: "要避開或改寫的寫法" };
 
 const PHRASE: Record<string, [string, string]> = {
   char_median: ["字數較長", "字數較短"],

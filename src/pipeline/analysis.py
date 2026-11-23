@@ -48,7 +48,7 @@ SLOTS = [("凌晨 00–05", 0, 5), ("上午 06–11", 6, 11), ("下午 12–17",
 LENGTH_BINS = [("≤50 字", 0, 50), ("51–150 字", 51, 150), ("151–300 字", 151, 300), (">300 字", 301, 10**9)]
 GROUPS = ("低迷型", "討論型", "共鳴型")
 UNGROUPED = "未分組"
-GROUP_GOALS = {"共鳴型": "擴大觸及、建立好感", "討論型": "帶動討論、收集意見", "低迷型": "要避開或改寫的寫法"}
+GROUP_GOALS = {"共鳴型": "提高按讚、建立好感", "討論型": "帶動討論、收集意見", "低迷型": "要避開或改寫的寫法"}
 GUIDE_MIN_POSTS = 20  # fewer real posts than this: halves of < 10 posts, no guide
 GUIDE_MIN_GROUP_PER_HALF = 3
 GUIDE_MIN_REL_GAP = 0.20  # median length: |group - others| >= 20% of the others value

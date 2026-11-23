@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { UUID_RE } from "@/lib/format";
-import { adviceBasis, buildPrompt, isGoal, isModel, withEntry, type Entry } from "@/lib/advice";
+import { actionCount, adviceBasis, buildPrompt, isGoal, isModel, withEntry, type Entry } from "@/lib/advice";
 import { generateAdvice, llmEnabled } from "@/lib/llm";
 import { normalizeUsername } from "@/lib/username";
 
@@ -80,7 +80,7 @@ export async function generateAdviceAction(jobId: string, goal: string, model: s
 
   let advice;
   try {
-    advice = await generateAdvice(model, goal, buildPrompt(job.username, goal, summary));
+    advice = await generateAdvice(model, goal, buildPrompt(job.username, goal, summary), actionCount(goal, summary));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "產生失敗" };
   }
