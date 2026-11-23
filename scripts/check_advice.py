@@ -44,13 +44,13 @@ GOAL_GROUP = {"擴大觸及": "共鳴型", "帶動討論": "討論型"}
 hu = lambda x: math.floor(x + 0.5)  # JS Math.round
 fmt = lambda f, v: f"{hu(v*100)}%" if f["is_share"] else f"{hu(v)} 字"
 FORBID = re.compile(r"顯著|明顯優於|統計上|p\s*值|p\s*=|證明")
-SOFT = re.compile(r"顯示|導致|造成|因為|因此|確保|保證|必然|一定|以提升|提升互動|相關")
+SOFT = re.compile(r"顯示|導致|造成|因為|因此|確保|保證|必然|一定|以提升|為提升|有助於|提升互動|相關(?!連結|活動|資訊|頁面|商品)")
 # topics a text can talk about -> regex. The four listed features first, then topics that can NEVER be on the stable list.
 TOPICS = {
     "char_median": r"字數|字以內|字以上|字以下|字左右|\d+\s*字|篇幅|長度|長文|短文|簡短|精簡",
     "question_share": r"提問|問句|疑問|詢問|發問|問題|？|\?",
     "link_share": r"連結|網址|外部網站|URL",
-    "evening_share": r"晚間|晚上|夜間|傍晚|18\s*[–\-~至到]\s*23|18\s*點|23\s*點|時段|發文時間|發布時間|發佈時間",
+    "evening_share": r"晚間|晚上|夜間|傍晚|18\s*點?\s*[–\-~至到]\s*23|18\s*點|23\s*點|時段|發文時間|發布時間|發佈時間",
     "(關鍵字)": r"關鍵字|關鍵詞|常見詞|主題詞",
     "(貼文類型／hashtag／mention)": r"貼文類型|hashtag|Hashtag|標籤|mention|提及帳號|@\w+",
     "(圖片／影片／素材)": r"圖片|影片|照片|輪播|貼圖|素材|短影音|圖文",
@@ -108,7 +108,7 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             ok = {str(wg["n_posts"]), *map(str, wg["halves"])}
             for _, f in cands: ok |= {str(f["n_group"]), str(f["n_others"]), re.sub(r"\D", "", fmt(f, f["group_value"])), re.sub(r"\D", "", fmt(f, f["others_value"]))}
             if name in ("summary", "avoid") or name.endswith(" why") or name.endswith(" do"):
-                text_nums = re.sub(r"18\s*[–\-~至到]\s*23", "", txt)
+                text_nums = re.sub(r"18\s*點?\s*[–\-~至到]\s*23\s*點?", "", txt)
                 stray = set(re.findall(r"\d+", text_nums)) - ok
                 if stray: flags.append((tag, name, "數字不在穩定清單內（可能自創門檻）", "、".join(sorted(stray))))
         # 3) why / avoid: must name a stable feature, with its group, and the numbers must match it
@@ -117,11 +117,11 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             if not hit: flags.append((tag, name, "沒有引用穩定清單內的特徵", txt[:50])); return
             for g, f in hit:
                 miss = {str(f["n_group"]), str(f["n_others"])} - set(re.findall(r"\d+", txt))
-                if miss: info.append((tag, name, f"引用『{g}・{f['label']}』沒有寫出篇數 {sorted(miss)}"))
+                if miss: flags.append((tag, name, "格式不完整：沒有寫出篇數（prompt 規則 1）", f"{g}・{f['label']} 缺 {sorted(miss)}"))
                 wrong = []
                 for want in (re.sub(r"\D", "", fmt(f, f["group_value"])), re.sub(r"\D", "", fmt(f, f["others_value"]))):
                     if want not in set(re.findall(r"\d+", txt)): wrong.append(want)
-                if wrong: info.append((tag, name, f"引用『{g}・{f['label']}』沒有寫出數值 {wrong}（正確：{g} {fmt(f,f['group_value'])}／其他 {fmt(f,f['others_value'])}）"))
+                if wrong: flags.append((tag, name, "格式不完整：沒有寫出數值（prompt 規則 1）", f"{g}・{f['label']} 缺 {wrong}（正確：{g} {fmt(f,f['group_value'])}／其他 {fmt(f,f['others_value'])}）"))
         for i, ac in enumerate(a["actions"], 1): cite(f"action {i} why", ac["why"], cands)
         if not low:
             if "沒有" not in a["avoid"]: flags.append((tag, "avoid", "低迷型無穩定特徵，但沒有說明沒有依據", a["avoid"][:50]))
@@ -134,11 +134,12 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             for f in tgt:
                 if f["key"] in dtopics and len(dtopics) == 1:
                     up = re.search(INCR, ac["do"]) and not re.search(DECR, ac["do"]); down = re.search(DECR, ac["do"]) and not re.search(INCR, ac["do"])
-                    if (f["direction"] == "lower" and up) or (f["direction"] == "higher" and down):
+                    names_value = re.sub(r"\D", "", fmt(f, f["group_value"])) in re.findall(r"\d+", ac["do"])
+                    if not names_value and ((f["direction"] == "lower" and up) or (f["direction"] == "higher" and down)):
                         flags.append((tag, f"action {i} do", "做法的方向疑似和特徵相反（請人工確認）", f"{f['label']}：{grp}{'較低' if f['direction']=='lower' else '較高'}；do={ac['do'][:40]}"))
 print("\n".join(out))
 print(f"\n\n# 檢查範圍：{n_checked} 份建議（只含目前穩定清單下產生的；舊清單下的建議不算）")
 print("\n## 腳本檢查結果（違規 / 疑似）", len(flags))
 for t in flags: print("-", *t)
-print("\n## 補充（沒寫出篇數或數值，非錯誤）", len(info))
+print("\n## 補充（每個 do 是否只依據一個特徵，僅供參考）", len(info))
 for t in info: print("-", *t)
