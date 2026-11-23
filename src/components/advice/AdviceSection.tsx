@@ -32,9 +32,15 @@ function Card({ entry }: { entry: Entry }) {
 }
 
 export default function AdviceSection({ jobId, store, counts, bases, status, enabled }: { jobId: string; store: Store; counts: StableCounts | null; bases: Record<Goal, string>; status: GuideStatus; enabled: boolean }) {
-  const [goal, setGoal] = useState<Goal>(GOALS[0]);
-  const [model, setModel] = useState<ModelId>(DEFAULT_MODEL);
   const [entries, setEntries] = useState<Record<string, Entry>>(store.entries);
+  // a cached entry counts only if it was written for the current writing guide and prompt version (same basis)
+  const valid = (g: Goal, m: ModelId) => entries[entryKey(g, m)]?.basis === bases[g];
+  // which model to show for a goal: the default model's advice if it exists, else the fast model's (so the page is never
+  // empty when the default model ran out of quota), else the default model (generated on demand)
+  const preferred = (g: Goal, current?: ModelId): ModelId =>
+    current && valid(g, current) ? current : valid(g, DEFAULT_MODEL) ? DEFAULT_MODEL : valid(g, FAST_MODEL) ? FAST_MODEL : DEFAULT_MODEL;
+  const [goal, setGoal] = useState<Goal>(GOALS[0]);
+  const [model, setModel] = useState<ModelId>(() => preferred(GOALS[0]));
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -77,7 +83,7 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
               role="tab"
               aria-selected={g === goal}
               disabled={pending}
-              onClick={() => pick(g, model)}
+              onClick={() => pick(g, preferred(g, model))}
               className={`rounded border px-3 py-1 ${g === goal ? "bg-foreground text-background" : "border-current/30"} disabled:opacity-50`}
             >
               {g}
@@ -107,7 +113,12 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
         {pending ? (
           <p className="opacity-70">{model === DEFAULT_MODEL ? "產生中，約 10–20 秒" : "產生中，通常 5 秒內"}</p>
         ) : entry ? (
-          <Card entry={entry} />
+          <>
+            {model === FAST_MODEL && !valid(goal, DEFAULT_MODEL) && (
+              <p className="mb-2 text-xs opacity-70">預設模型（{DEFAULT_MODEL}）的建議尚未產生，先顯示快速模型的結果；可在上方切換模型。</p>
+            )}
+            <Card entry={entry} />
+          </>
         ) : blocked ? (
           <p className="opacity-70">{blocked}</p>
         ) : stale ? (
