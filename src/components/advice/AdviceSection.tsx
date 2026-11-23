@@ -5,7 +5,7 @@ import { generateAdviceAction } from "@/app/dashboard/actions";
 import Link from "next/link";
 import { useGoal } from "@/components/GoalContext";
 import { taipeiStamp } from "@/lib/format";
-import { DEFAULT_MODEL, FAST_MODEL, GOALS, GOAL_GROUP, MODELS, entryKey, isModel, modelLabel, type Entry, type Goal, type ModelId, type GuideStatus, type StableCounts, type Store } from "@/lib/advice";
+import { DEFAULT_MODEL, STRONG_MODEL, GOALS, GOAL_GROUP, MODELS, entryKey, isModel, modelLabel, type Entry, type Goal, type ModelId, type GuideStatus, type StableCounts, type Store } from "@/lib/advice";
 
 function Card({ entry }: { entry: Entry }) {
   const a = entry.advice;
@@ -36,10 +36,8 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
   const [entries, setEntries] = useState<Record<string, Entry>>(store.entries);
   // a cached entry counts only if it was written for the current writing guide and prompt version (same basis)
   const valid = (g: Goal, m: ModelId) => entries[entryKey(g, m)]?.basis === bases[g];
-  // which model to show for a goal: the default model's advice if it exists, else the fast model's (so the page is never
-  // empty when the default model ran out of quota), else the default model (generated on demand)
-  const preferred = (g: Goal, current?: ModelId): ModelId =>
-    current && valid(g, current) ? current : valid(g, DEFAULT_MODEL) ? DEFAULT_MODEL : valid(g, FAST_MODEL) ? FAST_MODEL : DEFAULT_MODEL;
+  // which model to show for a goal: the one already shown if it has advice, else the default model (generated on demand)
+  const preferred = (g: Goal, current?: ModelId): ModelId => (current && valid(g, current) ? current : DEFAULT_MODEL);
   const { goal, setGoal } = useGoal();
   const [model, setModel] = useState<ModelId>(() => preferred(goal));
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +109,7 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
             className="rounded border border-current/30 bg-transparent p-1 disabled:opacity-50"
           >
             {MODELS.map((m) => (
-              <option key={m.id} value={m.id}>{m.label}（{m.id}）</option>
+              <option key={m.id} value={m.id}>{m.label}（{m.id}）・{m.note}</option>
             ))}
           </select>
         </label>
@@ -130,23 +128,18 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
       {/* exactly one message at a time: generating > error > the advice > why there is none (blocked / outdated / disabled / not yet) */}
       <div className="mt-3" aria-live="polite">
         {pending ? (
-          <p className="opacity-70">{model === DEFAULT_MODEL ? "產生中，約 10–20 秒" : "產生中，通常 5 秒內"}</p>
+          <p className="opacity-70">{model === STRONG_MODEL ? "產生中，約 10–20 秒" : "產生中，通常 5 秒內"}</p>
         ) : error ? (
           <div className="text-red-600">
             <p>{error.includes("今日額度已用完") ? error : `產生失敗：${error}`}</p>
-            {error.includes("今日額度已用完") && model !== FAST_MODEL && (
-              <button type="button" onClick={() => pick(goal, FAST_MODEL, true)} className="mt-2 rounded border border-current/40 px-3 py-1 text-foreground">
-                改用快速模型（{FAST_MODEL}）產生
+            {error.includes("今日額度已用完") && model !== DEFAULT_MODEL && (
+              <button type="button" onClick={() => pick(goal, DEFAULT_MODEL, true)} className="mt-2 rounded border border-current/40 px-3 py-1 text-foreground">
+                改用快速模型（{DEFAULT_MODEL}）產生
               </button>
             )}
           </div>
         ) : entry ? (
-          <>
-            {model === FAST_MODEL && !valid(goal, DEFAULT_MODEL) && (
-              <p className="mb-2 text-xs opacity-70">預設模型（{DEFAULT_MODEL}）的建議尚未產生，先顯示快速模型的結果；可在上方切換模型。</p>
-            )}
-            <Card entry={entry} />
-          </>
+          <Card entry={entry} />
         ) : blocked ? (
           <p className="opacity-70">{blocked}</p>
         ) : stale ? (

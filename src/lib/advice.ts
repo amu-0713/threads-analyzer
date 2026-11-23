@@ -18,12 +18,13 @@ export const GOAL_METRIC: Record<Goal, "按讚率中位數" | "回覆率中位�
 
 /** Only these models can be chosen; the browser sends an id and the server checks it against this list. */
 export const MODELS = [
-  { id: "gemini-3.8-flash", label: "預設（Flash）" },
-  { id: "gemini-3.1-flash-lite", label: "快速（Flash-Lite）" },
+  { id: "gemini-3.1-flash-lite", label: "快速（Flash-Lite）", note: "預設" },
+  { id: "gemini-3.8-flash", label: "Flash", note: "較強，速度較慢、每日額度有限" },
 ] as const;
 export type ModelId = (typeof MODELS)[number]["id"];
 export const DEFAULT_MODEL: ModelId = MODELS[0].id;
-export const FAST_MODEL: ModelId = MODELS[1].id;
+/** the stronger, slower model with a small free daily quota (20 requests); picking it is the user's choice */
+export const STRONG_MODEL: ModelId = MODELS[1].id;
 export const isModel = (m: unknown): m is ModelId => MODELS.some((x) => x.id === m);
 export const isGoal = (g: unknown): g is Goal => (GOALS as readonly unknown[]).includes(g);
 export const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id;

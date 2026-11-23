@@ -40,8 +40,9 @@ GOAL_TEXT = {
 # the groups are defined by like / reply percentiles, so each goal is verified with that rate (there is no reach data)
 GOAL_METRIC = {"提高按讚、建立好感": "按讚率中位數", "帶動討論": "回覆率中位數"}
 # Only these can be chosen (UI: dropdown; CLI: --model). Default = first.
-MODELS = ["gemini-3.8-flash", "gemini-3.1-flash-lite"]
+MODELS = ["gemini-3.1-flash-lite", "gemini-3.8-flash"]
 DEFAULT_MODEL = MODELS[0]
+STRONG_MODEL = MODELS[1]  # stronger and slower, small free daily quota (20 requests); picking it is the user's choice
 THINKING = {"gemini-3.8-flash": {"thinkingLevel": "low"}, "gemini-3.1-flash-lite": {"thinkingLevel": "minimal"}}  # 3.8-flash rejects "minimal" (HTTP 400)
 API = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -342,7 +343,7 @@ def _request_text(client: httpx.Client, model: str, key: str, prompt: str, retri
         if res.status_code not in (429, 500, 502, 503, 504):
             break
         if res.status_code == 429 and "per day" in res.text.lower():  # a per-day quota does not recover within seconds
-            raise AdviceError("今日額度已用完，請改用快速模型" if model == DEFAULT_MODEL else "今日額度已用完，請明天再試")
+            raise AdviceError("今日額度已用完，請改用快速模型" if model == STRONG_MODEL else "今日額度已用完，請明天再試")
         wait = 3 * 2**attempt
         log.warning("%s HTTP %s, retrying in %ss", model, res.status_code, wait)
         time.sleep(wait)
