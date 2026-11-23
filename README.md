@@ -165,7 +165,7 @@ python -m src.pipeline.insights_numbers --mode login            # 重現洞察�
 - **爬蟲在本機執行**：網頁只能新增任務與看結果，不能觸發爬取；dashboard 的「重跑」只是把任務設回 `pending`。
 - **Supabase 的 leaked password protection 未啟用**：這項需要付費方案，目前的安全檢查會因此有一則警告。
 - **註冊需要信箱驗證**（Confirm email 開啟）：Supabase 內建信件服務有寄信限制，展示請用上面的 demo 帳號。
-- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到「選定目標對應組別的穩定特徵」、篇數與代表貼文的數值特徵（不含原始貼文與常見關鍵字），報告頁已標明僅供參考。下拉只有兩個模型（白名單，server 端檢查，不接受任意模型名稱）：預設 `gemini-3.8-flash`（thinking 為 low；`minimal` 會被這個模型以 400 拒絕，約 10–20 秒，常遇到 503）與快速的 `gemini-3.1-flash-lite`（minimal，約 3–5 秒）。**這把 key 是免費額度：`gemini-3.8-flash` 每天只有 20 次請求**。回應不是合法 JSON、欄位缺漏、用了推論用語或因果承諾（「顯著」「以增加」「確保」等）時會重試一次，仍失敗就顯示原因且不存檔。prompt 有版本號（`PROMPT_VERSION`，改 prompt 沒有加版本號時測試會失敗）。逐條檢查結果見 `reports/advice_acceptance.md`。
+- **AI 建議由 AI 產生，可能有誤**：Gemini 只看到「選定目標對應組別的穩定特徵」、篇數與代表貼文的數值特徵（不含原始貼文與常見關鍵字），報告頁已標明僅供參考。下拉只有兩個模型（白名單，server 端檢查，不接受任意模型名稱）：預設 `gemini-3.8-flash`（thinking 為 low；`minimal` 會被這個模型以 400 拒絕，約 10–20 秒，常遇到 503）與快速的 `gemini-3.1-flash-lite`（minimal，約 3–5 秒）。**這把 key 是免費額度：`gemini-3.8-flash` 每天只有 20 次請求**。回應不是合法 JSON、欄位缺漏、用了推論用語或因果承諾（「顯著」「以增加」「確保」等）時會重試一次，仍失敗就顯示原因且不存檔。prompt 有版本號（目前 v9；`PROMPT_VERSION`，改 prompt 沒有加版本號時測試會失敗）。伺服器會擋下語意不合格的回答（百分比目標、調整比例、精確字數、取整方向比資料更嚴、驗證指標與組別不符、do 用到低迷型、avoid 方向相反等），重試一次仍不合格就不存檔。逐條檢查結果見 `reports/advice_acceptance.md`。
 - **登入模式依賴使用者的工作階段**：工作階段過期、帳號被要求驗證或被限制時，爬取會停止；`storage_state` 檔等同登入狀態，必須自行妥善保管並在用完後刪除。
 - **洞察裡的「邀請型／規則寫滿型」是人工分類**，在看過資料之後才判讀，屬於探索性分析（見 `reports/insights.md` 附錄 C）。
 - 若 Threads 改版（頁面結構、內嵌 JSON、登入牆行為），爬蟲需要跟著調整。
