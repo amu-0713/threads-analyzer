@@ -1,6 +1,6 @@
 // Gemini advice generator. Server-side only: the key comes from LLM_API_KEY and never reaches the browser.
 // No path-alias imports (only relative ones) so the file can also be run directly with node for testing.
-import { DEFAULT_MODEL, RESPONSE_SCHEMA, THINKING, parseAdvice, type AdviceContext, type AdviceObject, type Goal, type ModelId } from "./advice";
+import { RESPONSE_SCHEMA, STRONG_MODEL, THINKING, parseAdvice, type AdviceContext, type AdviceObject, type Goal, type ModelId } from "./advice";
 
 export function llmEnabled(): boolean {
   return Boolean(process.env.LLM_API_KEY);
@@ -45,7 +45,7 @@ async function requestText(key: string, model: ModelId, prompt: string): Promise
     const body = (await res.clone().text()).replace(/\s+/g, " ");
     console.log(`[llm] ${model} ${res.status}, retry ${attempt + 1}: ${body.slice(0, 700)}`);
     // a per-day quota does not recover within seconds: say so instead of waiting and retrying
-    if (res.status === 429 && /per day/i.test(body)) throw new Error(model === DEFAULT_MODEL ? "今日額度已用完，請改用快速模型" : "今日額度已用完，請明天再試");
+    if (res.status === 429 && /per day/i.test(body)) throw new Error(model === STRONG_MODEL ? "今日額度已用完，請改用快速模型" : "今日額度已用完，請明天再試");
     await new Promise((r) => setTimeout(r, 3000 * 2 ** attempt));
     res = await callGemini(key, model, prompt, VARIANTS[vi]);
   }

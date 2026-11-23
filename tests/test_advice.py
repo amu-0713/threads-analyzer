@@ -154,7 +154,7 @@ def test_daily_quota_429_is_not_retried():
 
 
 def test_model_must_be_on_the_whitelist():
-    assert A.MODELS == ["gemini-3.8-flash", "gemini-3.1-flash-lite"] and A.DEFAULT_MODEL == "gemini-3.8-flash"
+    assert A.MODELS == ["gemini-3.1-flash-lite", "gemini-3.8-flash"] and A.DEFAULT_MODEL == "gemini-3.1-flash-lite" and A.STRONG_MODEL == "gemini-3.8-flash"
     with pytest.raises(A.AdviceError, match="whitelist"):
         A.generate("p", "k", "gemini-2.5-pro", "提高按讚、建立好感", _client()[0])
 
