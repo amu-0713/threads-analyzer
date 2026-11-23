@@ -67,8 +67,12 @@ export function stableCounts(summary: { group_analysis?: any }): StableCounts | 
   return { 共鳴型: c("共鳴型"), 討論型: c("討論型"), 低迷型: c("低迷型") };
 }
 
+/** Bump when the prompt text changes (src/pipeline/advice.py has the same number; tests/test_advice.py fails if the prompt changes
+ *  without this being bumped). It is part of the basis, so advice written with an older prompt is hidden and must be regenerated. */
+export const PROMPT_VERSION = 3;
+
 /** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
- *  current one was written for an older guide: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
+ *  current one was written for an older guide or prompt: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
 export function adviceBasis(goal: Goal, summary: { group_analysis?: any }): string {
   const wg = summary.group_analysis?.real?.writing_guide;
   if (!wg?.available) return "";
@@ -76,7 +80,7 @@ export function adviceBasis(goal: Goal, summary: { group_analysis?: any }): stri
     ((wg.groups?.[g]?.stable_features ?? []) as Feature[])
       .map((f) => `${g}:${f.key}:${f.direction}:${f.group_value}:${f.others_value}:${f.n_group}:${f.n_others}`)
       .join(",");
-  return `${part(GOAL_GROUP[goal])}|${part("低迷型")}`;
+  return `p${PROMPT_VERSION}|${part(GOAL_GROUP[goal])}|${part("低迷型")}`;
 }
 
 /** Everything the model sees for one goal: stable features only (never the unstable ones), counts, representative traits. */

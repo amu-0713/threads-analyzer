@@ -26,7 +26,7 @@
 
 ## AI 建議（`llm_advice`）
 
-每筆建議帶 `basis`（當時穩定特徵的指紋）；寫作清單重新分析後指紋不同，舊建議在畫面上會被隱藏，需重新產生。
+每筆建議帶 `basis`（`p<prompt 版本號>|目標組與低迷型的穩定特徵`）；寫作清單重新分析、或 prompt 改過（`PROMPT_VERSION` 加 1，測試會強制）後指紋不同，舊建議在畫面上會被隱藏，需重新產生。
 
 `{"version": 2, "legacy_text": 舊版純文字或 null, "entries": {"<目標>|<模型>": {goal, model, generated_at, n_posts, advice: {goal, summary, actions: [{do, why, test}] (2–4), avoid}}}}`。送給 Gemini 的只有：目標、該目標對應組別的穩定特徵與篇數、代表貼文特徵、低迷型穩定特徵。該組沒有穩定特徵時不產生建議。
 

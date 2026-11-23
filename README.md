@@ -90,6 +90,7 @@ python -m src.pipeline.run --job <job-id> --analyze-only   # 不重爬，只重�
 python -m src.pipeline.validate_mock --job <job-id>        # 分析能否找回 mock 內寫入的 3 個規律
 python -m src.pipeline.advice --all --mode login            # 預先產生兩種目標的 AI 建議並存入 job_summaries.llm_advice（--job <id> 指定任務、--goal 擴大觸及|帶動討論、--model 白名單內的模型、--dry-run 只印不存）
 python -m src.pipeline.insights_numbers --mode login       # 重現 reports/insights.md 引用的所有數字（--mode anonymous：附錄對照用的未登入資料）
+python scripts/check_advice.py                              # 逐條檢查快取中的 AI 建議（每個欄位是否只引用穩定清單內的特徵、數字是否對得上）；用法見檔頭，可用 CHECK_EMAIL／CHECK_PASSWORD 以使用者身分（RLS）唯讀執行
 python -m pytest -q tests
 ```
 

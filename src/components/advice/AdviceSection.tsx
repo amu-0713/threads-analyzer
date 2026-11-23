@@ -111,7 +111,7 @@ export default function AdviceSection({ jobId, store, counts, bases, status, ena
         ) : blocked ? (
           <p className="opacity-70">{blocked}</p>
         ) : stale ? (
-          <p className="opacity-70">寫作清單已更新，之前產生的建議已失效，請按「產生」重新產生。</p>
+          <p className="opacity-70">寫作清單或 prompt 已更新，之前產生的建議已失效，請按「產生」重新產生。</p>
         ) : !enabled ? (
           <p className="opacity-70">未設定 LLM_API_KEY，此功能停用。</p>
         ) : (

@@ -165,8 +165,17 @@ def test_entry_stores_the_basis_and_it_changes_with_the_stable_features():
     f1 = _feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)
     s1 = _summary(resonance=[f1], low=[_feat("question_share", "提問句占比", "lower", 0.345, 1.0, 16, 24)])
     b1 = A.advice_basis("擴大觸及", s1)
-    assert b1 == "共鳴型:char_median:lower:26:137:13:27|低迷型:question_share:lower:0.345:1:16:24"  # numbers printed as JavaScript does
+    assert b1 == f"p{A.PROMPT_VERSION}|共鳴型:char_median:lower:26:137:13:27|低迷型:question_share:lower:0.345:1:16:24"  # numbers printed as JavaScript does
     assert A.advice_basis("擴大觸及", _summary(resonance=[f1])) != b1  # 低迷型 features are part of the basis
     assert A.advice_basis("擴大觸及", _summary(available=False)) == ""
     # an advice written under one guide no longer matches after the guide changes: the UI hides it
     assert A.advice_basis("擴大觸及", _summary(resonance=[dict(f1, group_value=30)], low=[_feat("question_share", "提問句占比", "lower", 0.345, 1.0, 16, 24)])) != b1
+
+
+def test_prompt_change_requires_a_version_bump():
+    """The prompt text is part of what advice was written with. If this fails you changed the prompt: bump PROMPT_VERSION in
+    src/pipeline/advice.py AND src/lib/advice.ts (old advice is then hidden until regenerated), then update the two constants below."""
+    import hashlib
+
+    prompt = A.build_prompt("acct", "擴大觸及", _summary(resonance=[_feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)]))
+    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (3, "2f09ca7cf7ca")

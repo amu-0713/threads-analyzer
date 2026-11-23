@@ -90,6 +90,10 @@ def stable_counts(summary: dict) -> dict | None:
     return {g: len((wg.get("groups", {}).get(g) or {}).get("stable_features") or []) for g in ("共鳴型", "討論型", "低迷型")}
 
 
+# Bump together with PROMPT_VERSION in src/lib/advice.ts whenever the prompt text changes (a test fails otherwise).
+PROMPT_VERSION = 3
+
+
 def advice_basis(goal: str, summary: dict) -> str:
     """Fingerprint of the stable features behind one goal's advice (mirrors adviceBasis in advice.ts)."""
     wg = ((summary.get("group_analysis") or {}).get("real") or {}).get("writing_guide") or {}
@@ -100,7 +104,7 @@ def advice_basis(goal: str, summary: dict) -> str:
         fs = (wg.get("groups", {}).get(g) or {}).get("stable_features") or []
         return ",".join(f"{g}:{f['key']}:{f['direction']}:{_js(f['group_value'])}:{_js(f['others_value'])}:{f['n_group']}:{f['n_others']}" for f in fs)
 
-    return f"{part(GOAL_GROUP[goal])}|{part('低迷型')}"
+    return f"p{PROMPT_VERSION}|{part(GOAL_GROUP[goal])}|{part('低迷型')}"
 
 
 def _js(x: float) -> str:
