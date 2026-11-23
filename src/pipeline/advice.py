@@ -159,6 +159,7 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
         f"7. 輸出 JSON：goal 必須是「{goal}」；summary 一句話（這個帳號要達成這個目標，下一篇該怎麼寫）；actions 2–4 點，每點有 do、why、test；avoid 一句話。",
         "8. 精簡：summary、do、why、test、avoid 每欄一句話，各不超過 60 字；actions 以 2–3 點為主，只在穩定特徵夠多時才寫第 4 點。",
         "9. 資料沒有圖片或影片資訊，不可提及素材類型（例如圖片、影片、輪播、貼圖）；只能談文字寫法。",
+        "10. summary、do、avoid 與 why 一樣，只能引用「目標組穩定特徵」或「低迷型穩定特徵」裡的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議。",
         "",
         json.dumps(data, ensure_ascii=False, separators=(",", ":")),
     ])
