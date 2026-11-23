@@ -178,4 +178,4 @@ def test_prompt_change_requires_a_version_bump():
     import hashlib
 
     prompt = A.build_prompt("acct", "擴大觸及", _summary(resonance=[_feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)]))
-    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (4, "58bd21796839")
+    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (5, "028b879e276f")

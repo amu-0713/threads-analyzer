@@ -105,7 +105,7 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             for kw in repkw:  # the representative posts' common keywords handed to the model as background only
                 if kw and kw in txt: flags.append((tag, name, "提到代表貼文的關鍵字（不在穩定清單）", kw))
             # 2) numbers must belong to a cited stable feature (why/avoid) -- numbers in do/summary/test are matched against all stable values
-            ok = {str(wg["n_posts"]), *map(str, wg["halves"])}
+            ok = {str(wg["n_posts"]), *map(str, wg["halves"]), "18", "23"}  # 18 and 23 come from the label 晚間（18–23 點）
             for _, f in cands: ok |= {str(f["n_group"]), str(f["n_others"]), re.sub(r"\D", "", fmt(f, f["group_value"])), re.sub(r"\D", "", fmt(f, f["others_value"]))}
             if name in ("summary", "avoid") or name.endswith(" why") or name.endswith(" do"):
                 text_nums = re.sub(r"18\s*點?\s*[–\-~至到]\s*23\s*點?", "", txt)
@@ -113,7 +113,8 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
                 if stray: flags.append((tag, name, "數字不在穩定清單內（可能自創門檻）", "、".join(sorted(stray))))
         # 3) why / avoid: must name a stable feature, with its group, and the numbers must match it
         def cite(name, txt, pool):
-            hit = [(g, f) for g, f in pool if re.search(TOPICS[f["key"]], txt)]
+            named = [x for x in ("共鳴型", "討論型", "低迷型") if x in txt]
+            hit = [(g, f) for g, f in pool if re.search(TOPICS[f["key"]], txt) and (not named or g in named)]
             if not hit: flags.append((tag, name, "沒有引用穩定清單內的特徵", txt[:50])); return
             for g, f in hit:
                 miss = {str(f["n_group"]), str(f["n_others"])} - set(re.findall(r"\d+", txt))
