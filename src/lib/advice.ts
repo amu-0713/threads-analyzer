@@ -166,12 +166,12 @@ export const RESPONSE_SCHEMA = {
 };
 
 // inferential wording + causal promises (a reply using any of these is retried once with the reason, never stored)
-const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成/;
+const FORBIDDEN = /顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成|(?:來|藉此|進而)(?:嘗試)?(?:提升|提高|增加|帶動)/;
 
 const SHARE_TARGET = /\d+(?:\.\d+)?\s*[%％]/;
 const LENGTH = /(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?/g;
 const LATE_NIGHT = /23\s*點\s*(?:以後|後)|午夜|凌晨/;
-const RATIO_CHANGE = /(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)/;
+const RATIO_CHANGE = /(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)|(減少|降低|增加|提高|多用|少用|多放|少放|多加|少加).{0,6}(提問|問句|連結|網址|晚間)/;
 
 const FEATURE_WORD: Record<string, string> = { question_share: "提問|問句", link_share: "連結|網址", evening_share: "晚間", char_median: "字" };
 const NEGATED = (word: string) => new RegExp(`(沒有|不含|缺少|無|少了|不帶|不放|沒放|沒加|不在)[^，。；]{0,4}(${word})`);
@@ -198,7 +198,7 @@ export function contentProblem(obj: AdviceObject, goal: Goal, ctx?: AdviceContex
   const other = metric === "按讚率" ? "回覆率" : "按讚率";
   // the avoid sentence counts too, without its "（低迷型 N 篇 vs ...）" citation
   for (const t of [obj.summary, ...obj.actions.map((a) => a.do), obj.avoid.split("（低迷型")[0]]) {
-    if (RATIO_CHANGE.test(t)) return "占比類特徵不可寫成「調整比例」；只能寫這篇要不要有提問句、放連結、在晚間發";
+    if (RATIO_CHANGE.test(t)) return "占比類特徵不可寫成「調整比例」或「增加／減少」；只能寫這篇要不要有提問句、放連結、在晚間發";
     if (SHARE_TARGET.test(t)) return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發";
     for (const m of t.matchAll(LENGTH)) if (!m[1] && m[3] !== "左右" && m[3] !== "上下") return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數";
     if (LATE_NIGHT.test(t)) return "晚間是 18:00–23:59；不在晚間發請寫「18 點以前」";

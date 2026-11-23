@@ -45,7 +45,7 @@ GOAL_METRIC = {"共鳴型": "按讚率", "討論型": "回覆率"}  # groups are
 hu = lambda x: math.floor(x + 0.5)  # JS Math.round
 fmt = lambda f, v: f"{hu(v*100)}%" if f["is_share"] else f"{hu(v)} 字"
 FORBID = re.compile(r"顯著|明顯優於|統計上|p\s*值|p\s*=|證明")
-SOFT = re.compile(r"顯示|導致|造成|因為|因此|確保|保證|必然|一定|以提升|為提升|有助於|提升互動|相關(?!連結|活動|資訊|頁面|商品)")
+SOFT = re.compile(r"(?:來|藉此|進而)(?:嘗試)?(?:提升|提高|增加|帶動)|顯示|導致|造成|因為|因此|確保|保證|必然|一定|以提升|為提升|有助於|提升互動|相關(?!連結|活動|資訊|頁面|商品)")
 # topics a text can talk about -> regex. The four listed features first, then topics that can NEVER be on the stable list.
 TOPICS = {
     "char_median": r"字數|字以內|字以上|字以下|字左右|\d+\s*字|篇幅|長度|長文|短文|簡短|精簡",
@@ -161,7 +161,7 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             low_only = [f for f in low if f["key"] not in target_keys and re.search(TOPICS[f["key"]], ac["do"])]
             if "低迷型" in ac["do"] or "低迷型" in ac["why"] or low_only:
                 flags.append((tag, f"action {i} do", "do 引用了低迷型特徵（低迷型只能用在 avoid）", ac["do"][:50]))
-            if re.search(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)", ac["do"]):
+            if re.search(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)|(減少|降低|增加|提高|多用|少用|多放|少放|多加|少加).{0,6}(提問|問句|連結|網址|晚間)", ac["do"]):
                 flags.append((tag, f"action {i} do", "把占比寫成「調整比例」（應寫這篇要不要）", ac["do"][:50]))
             if re.search(r"\d+\s*[%％]", ac["do"]):
                 flags.append((tag, f"action {i} do", "把占比寫成百分比目標（應寫這篇要不要）", ac["do"][:50]))
@@ -207,7 +207,7 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
         if "觸及" in whole:
             flags.append((tag, "全文", "使用了「觸及」（沒有觸及資料）", ""))
         for nm, t in (("summary", a["summary"]), ("avoid", a["avoid"].split("（低迷型")[0])):
-            if re.search(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)", t):
+            if re.search(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)|(減少|降低|增加|提高|多用|少用|多放|少放|多加|少加).{0,6}(提問|問句|連結|網址|晚間)", t):
                 flags.append((tag, nm, "把占比寫成「調整比例」（應寫這篇要不要）", t[:50]))
             for m in re.finditer(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?", t):
                 if not m.group(1) and not m.group(3):

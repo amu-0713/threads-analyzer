@@ -60,7 +60,7 @@ RESPONSE_SCHEMA = {
     "required": ["goal", "summary", "actions", "avoid"],
 }
 # inferential wording + causal promises (a reply using any of these is retried once with the reason, never stored)
-FORBIDDEN = re.compile(r"顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成")
+FORBIDDEN = re.compile(r"顯著|明顯優於|統計上|p\s*值|p\s*=|證明|以提升|為提升|以增加|以提高|有助於|確保|導致|造成|(?:來|藉此|進而)(?:嘗試)?(?:提升|提高|增加|帶動)")
 
 
 class AdviceError(RuntimeError):
@@ -178,7 +178,7 @@ def build_prompt(username: str, goal: str, summary: dict) -> str:
 SHARE_TARGET = re.compile(r"\d+(?:\.\d+)?\s*[%％]")
 LENGTH = re.compile(r"(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|內)?")
 LATE_NIGHT = re.compile(r"23\s*點\s*(?:以後|後)|午夜|凌晨")
-RATIO_CHANGE = re.compile(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)")
+RATIO_CHANGE = re.compile(r"(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)|(減少|降低|增加|提高|多用|少用|多放|少放|多加|少加).{0,6}(提問|問句|連結|網址|晚間)")
 
 
 FEATURE_WORD = {"question_share": "提問|問句", "link_share": "連結|網址", "evening_share": "晚間", "char_median": "字"}
@@ -213,7 +213,7 @@ def _content_problem(obj: dict, goal: str, ctx: dict | None = None) -> str | Non
     # the avoid sentence counts too, without its "（低迷型 N 篇 vs ...）" citation
     for t in [obj["summary"], *[a["do"] for a in obj["actions"]], obj["avoid"].split("（低迷型")[0]]:
         if RATIO_CHANGE.search(t):
-            return "占比類特徵不可寫成「調整比例」；只能寫這篇要不要有提問句、放連結、在晚間發"
+            return "占比類特徵不可寫成「調整比例」或「增加／減少」；只能寫這篇要不要有提問句、放連結、在晚間發"
         if SHARE_TARGET.search(t):
             return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發"
         if any(not m.group(1) and m.group(3) not in ("左右", "上下") for m in LENGTH.finditer(t)):

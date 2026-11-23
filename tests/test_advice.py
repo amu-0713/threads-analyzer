@@ -100,6 +100,8 @@ def test_validation_rejects_bad_answers(mutate, msg):
     (lambda o: o["actions"][0].update(test="連續 4 篇，比較回覆率中位數"), "按讚率中位數"),
     (lambda o: o["actions"][0].update(test="連續 4 篇，比較按讚率與觸及人數"), "觸及"),
     (lambda o: o.update(summary="調整字數與提問句比例，仍需測試"), "調整比例"),
+    (lambda o: o.update(summary="寫長一點並在內文減少提問句的使用，仍需測試"), "增加／減少"),
+    (lambda o: o.update(summary="調整貼文長度來嘗試提升按讚表現"), "推論用語"),
     (lambda o: o.update(avoid="避免撰寫超過 80 字的貼文（低迷型 13 篇 vs 其他 27 篇：字數（中位數）低迷型較高（82 字 vs 33 字））"), "大約範圍"),
 ])
 def test_v7_semantic_rules(mutate, msg):
