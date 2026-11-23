@@ -71,7 +71,7 @@ export function stableCounts(summary: { group_analysis?: any }): StableCounts | 
 
 /** Bump when the prompt text changes (src/pipeline/advice.py has the same number; tests/test_advice.py fails if the prompt changes
  *  without this being bumped). It is part of the basis, so advice written with an older prompt is hidden and must be regenerated. */
-export const PROMPT_VERSION = 7;
+export const PROMPT_VERSION = 8;
 
 /** Fingerprint of the stable features behind one goal's advice (target group + 低迷型). An entry whose basis differs from the
  *  current one was written for an older guide or prompt: it is hidden and must be regenerated. Mirrored by advice_basis() in advice.py. */
@@ -126,11 +126,11 @@ export function buildPrompt(username: string, goal: Goal, summary: { group_analy
     `任務：針對目標「${goal}」，告訴使用者「下一篇貼文」可以怎麼寫。`,
     "規則：",
     `1. 只能使用資料裡的穩定特徵。actions 剛好 ${data.建議點數} 點：「目標組穩定特徵」每個特徵各寫一點（依資料順序，同一個特徵不可寫兩點）；「低迷型穩定特徵」只能用在 avoid，不可寫進 do。`,
-    "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數寫成「控制在約 N 字左右以內」或「寫到約 N 字左右以上」，N 取自目標組自己的值（可取到十位），不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。",
+    "2. do 是使用者下一篇就能照著寫的做法，只依據該點的那一個特徵，而且只寫方向或大約範圍，不可變成單篇的精確目標：字數：目標組較低時寫「控制在約 N 字左右以內」，N 是目標組的值往上取到十位（例如 26 → 約 30 字左右以內）；目標組較高時寫「寫到約 N 字左右以上」，N 往下取到十位（例如 89 → 約 80 字左右以上）；不可拿「其他貼文」的值當目標；占比類特徵（提問句、含連結、晚間）只能寫成這一篇「要不要」有提問句、放連結、在晚間發，不可寫「比例調整為 X%」或任何百分比目標。",
     "3. 晚間的定義是 18:00–23:59。建議不在晚間發時寫「18 點以前發」，不可寫「23 點以後」。",
     "4. why 一律照這個格式寫：「{組別} {N} 篇 vs 其他 {M} 篇：{特徵}{組別}較高或較低（{組別的值} vs {其他貼文的值}）」，數字照抄資料中的篇數、方向與兩個值，不可省略或改寫。",
     `5. test 寫怎麼驗證：連續幾篇照做，和沒照做的貼文比較「${data.驗證指標}」；只能用這個指標，不可寫觸及人數、觀看數或其他指標。`,
-    "6. avoid 用一句話說要避開什麼，只依據一個低迷型穩定特徵，同樣只寫方向或「要不要」，句末用括號照規則 4 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
+    "6. avoid 用一句話寫出要避開的寫法本身，也就是低迷型的樣子（例如「避開沒有提問句的貼文」「避開寫到約 80 字左右以上的長文」），不要寫成「不要…」的命令句；只依據一個低迷型穩定特徵，方向要和低迷型一致，句末用括號照規則 4 的格式寫出依據（例如「（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））」）；若「低迷型穩定特徵」是空的，寫「低迷型目前沒有前後期一致的特徵，沒有足夠依據指出要避開的寫法」。",
     "7. 用中立字詞：不可使用「顯著」「明顯優於」「統計上」「p 值」「證明」等推論用語，也不可寫「顯示」「相關」「導致」「造成」「以提升」「為提升」「以增加」「以提高」「有助於」「確保」等因果或關聯說法；不可使用「觸及」這個詞（資料沒有觸及數）。",
     `8. 依實際篇數描述樣本：真實貼文 ${data.真實貼文數} 篇（依發文時間分成前後各約 ${data.前後兩半各.join("、")} 篇）。特徵方向只代表該組貼文與其他貼文的差別，不代表因果；summary 要提醒仍需實際測試。`,
     "9. summary、do、avoid 與 why 一樣，只能引用穩定清單內的特徵；不可提到清單以外的特徵（例如關鍵字、貼文類型、時段、字數等沒有列在穩定清單的項目）；資料沒有圖片或影片資訊，不可提及素材類型；do 不要指定貼文主題或內容題材。「目標組代表貼文特徵」只是背景，不可當成依據或寫進建議。",
@@ -173,8 +173,22 @@ const LENGTH = /(約|大約)?\s*(\d+)\s*字(左右|以內|以下|以上|上下|�
 const LATE_NIGHT = /23\s*點\s*(?:以後|後)|午夜|凌晨/;
 const RATIO_CHANGE = /(調整|提高|降低|增加|減少|拉高|拉低).{0,8}(比例|占比)|(比例|占比).{0,4}(調整|提高|降低|拉到|增加|減少)/;
 
+const FEATURE_WORD: Record<string, string> = { question_share: "提問|問句", link_share: "連結|網址", evening_share: "晚間", char_median: "字" };
+const NEGATED = (word: string) => new RegExp(`(沒有|不含|缺少|無|少了|不帶|不放|沒放|沒加|不在)[^，。；]{0,4}(${word})`);
+const LONG = /以上|超過|過長|長文|長篇/;
+const SHORT = /以下|以內|過短|短文|短篇/;
+
+/** What the validator needs to know about one goal: the number of actions and the stable features it may cite. */
+export type AdviceContext = { nActions: number; target: Feature[]; low: Feature[] };
+export function adviceContext(goal: Goal, summary: { group_analysis?: any }): AdviceContext {
+  const groups = summary.group_analysis?.real?.writing_guide?.groups ?? {};
+  const target = (groups[GOAL_GROUP[goal]]?.stable_features ?? []) as Feature[];
+  return { nActions: target.length, target, low: (groups["低迷型"]?.stable_features ?? []) as Feature[] };
+}
+
 /** Semantic rules that can be checked without a model (mirrored by _content_problem in advice.py). Returns the first problem or null. */
-export function contentProblem(obj: AdviceObject, goal: Goal, nActions?: number): string | null {
+export function contentProblem(obj: AdviceObject, goal: Goal, ctx?: AdviceContext): string | null {
+  const nActions = ctx?.nActions;
   const n = obj.actions.length;
   if (nActions ? n !== nActions : n < 1 || n > 4) return nActions ? `actions 必須剛好 ${nActions} 點（目標組每個穩定特徵一點）` : "actions 必須是 1–4 點";
   const all = [obj.summary, obj.avoid, ...obj.actions.flatMap((a) => [a.do, a.why, a.test])].join(" ");
@@ -186,18 +200,43 @@ export function contentProblem(obj: AdviceObject, goal: Goal, nActions?: number)
   for (const t of [obj.summary, ...obj.actions.map((a) => a.do), obj.avoid.split("（低迷型")[0]]) {
     if (RATIO_CHANGE.test(t)) return "占比類特徵不可寫成「調整比例」；只能寫這篇要不要有提問句、放連結、在晚間發";
     if (SHARE_TARGET.test(t)) return "summary／do 不可寫百分比目標；占比類特徵只能寫這篇要不要有提問句、放連結、在晚間發";
-    for (const m of t.matchAll(LENGTH)) if (!m[1] && !m[3]) return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數";
+    for (const m of t.matchAll(LENGTH)) if (!m[1] && m[3] !== "左右" && m[3] !== "上下") return "字數只能寫成大約範圍（例如「控制在約 30 字左右以內」），不可寫成單篇的精確字數";
     if (LATE_NIGHT.test(t)) return "晚間是 18:00–23:59；不在晚間發請寫「18 點以前」";
   }
   for (const a of obj.actions) {
     if (a.do.includes("低迷型")) return "do 只能依據目標組的穩定特徵；低迷型只能用在 avoid";
     if (!a.test.includes(metric) || a.test.includes(other)) return `test 必須比較${GOAL_METRIC[goal]}`;
   }
+  if (!ctx?.target || !ctx.low) return null;
+  // a length range must not be stricter than the group's own median: round up for "較低", down for "較高"
+  const len = ctx.target.find((f) => f.key === "char_median");
+  if (len)
+    for (const a of obj.actions)
+      for (const m of a.do.matchAll(LENGTH)) {
+        const v = Math.round(len.group_value), x = Number(m[2]);
+        if (len.direction === "lower" && x < v) return `字數範圍不可比目標組的中位數（${v} 字）還嚴：較低時往上取到十位（例如 26 → 約 30 字左右以內）`;
+        if (len.direction === "higher" && x > v) return `字數範圍不可比目標組的中位數（${v} 字）還高：較高時往下取到十位（例如 89 → 約 80 字左右以上）`;
+      }
+  // avoid describes the 低迷型 way of writing itself, in the right direction
+  const avoid = obj.avoid.split("（低迷型")[0];
+  if (/不要|別再|勿/.test(avoid)) return "avoid 請寫成要避開的寫法本身（例如「避開沒有提問句的貼文」），不要寫成「不要…」的命令句";
+  for (const f of ctx.low) {
+    const word = FEATURE_WORD[f.key];
+    if (!word || !new RegExp(word).test(avoid)) continue;
+    if (f.key === "char_median") {
+      if (f.direction === "higher" && !LONG.test(avoid)) return `avoid 方向不對：低迷型的${f.label}較高，應避開較長的貼文`;
+      if (f.direction === "lower" && !SHORT.test(avoid)) return `avoid 方向不對：低迷型的${f.label}較低，應避開較短的貼文`;
+    } else {
+      const negated = NEGATED(word).test(avoid);
+      if (f.direction === "lower" && !negated) return `avoid 方向不對：低迷型的${f.label}較低，應寫「避開沒有…的貼文」`;
+      if (f.direction === "higher" && negated) return `avoid 方向不對：低迷型的${f.label}較高，應寫「避開有…的貼文」`;
+    }
+  }
   return null;
 }
 
 /** Returns the advice object, or throws with the reason (invalid JSON, missing fields, wording or semantic rule broken). */
-export function parseAdvice(text: string, goal: Goal, nActions?: number): AdviceObject {
+export function parseAdvice(text: string, goal: Goal, ctx?: AdviceContext): AdviceObject {
   let obj: any;
   try {
     obj = JSON.parse(text);
@@ -211,7 +250,7 @@ export function parseAdvice(text: string, goal: Goal, nActions?: number): Advice
   for (const a of obj.actions) if (!str(a?.do) || !str(a?.why) || !str(a?.test)) throw new Error("某一點缺少 do／why／test");
   if (!str(obj.avoid)) throw new Error("缺少 avoid");
   const out: AdviceObject = { goal, summary: obj.summary.trim(), actions: obj.actions.map((a: Action) => ({ do: a.do.trim(), why: a.why.trim(), test: a.test.trim() })), avoid: obj.avoid.trim() };
-  const problem = contentProblem(out, goal, nActions);
+  const problem = contentProblem(out, goal, ctx);
   if (problem) throw new Error(problem);
   return out;
 }

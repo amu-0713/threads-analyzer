@@ -179,6 +179,31 @@ for jid, j in sorted(jobs.items(), key=lambda kv: kv[1]["username"]):
             metric = GOAL_METRIC[grp]; other = "回覆率" if metric == "按讚率" else "按讚率"
             if metric not in ac["test"] or other in ac["test"] or re.search(r"觸及|觀看|互動率|曝光", ac["test"]):
                 flags.append((tag, f"action {i} test", f"驗證指標與組別不符（{grp}應比{metric}中位數）", ac["test"][:50]))
+        # rounding direction of a length range (must not be stricter than the group's own median) and the avoid direction
+        for f in tgt:
+            if f["key"] != "char_median":
+                continue
+            v = hu(f["group_value"])
+            for i, ac in enumerate(a["actions"], 1):
+                for m in re.finditer(r"(\d+)\s*字", ac["do"]):
+                    x = int(m.group(1))
+                    if (f["direction"] == "lower" and x < v) or (f["direction"] == "higher" and x > v):
+                        flags.append((tag, f"action {i} do", "字數範圍比目標組中位數更嚴（取整方向錯）", f"{m.group(0)}；{grp}中位數 {v} 字，{'較低→往上取' if f['direction']=='lower' else '較高→往下取'}"))
+        av = a["avoid"].split("（低迷型")[0]
+        if re.search(r"不要|別再|勿", av):
+            flags.append((tag, "avoid", "寫成「不要…」命令句（應寫要避開的寫法本身）", av[:50]))
+        WORD = {"question_share": "提問|問句", "link_share": "連結|網址", "evening_share": "晚間", "char_median": "字"}
+        for f in low:
+            w = WORD[f["key"]]
+            if not re.search(w, av):
+                continue
+            if f["key"] == "char_median":
+                bad_dir = (f["direction"] == "higher" and not re.search(r"以上|超過|過長|長文|長篇", av)) or (f["direction"] == "lower" and not re.search(r"以下|以內|過短|短文|短篇", av))
+            else:
+                neg = bool(re.search(rf"(沒有|不含|缺少|無|少了|不帶|不放|沒放|沒加|不在)[^，。；]{{0,4}}({w})", av))
+                bad_dir = (f["direction"] == "lower" and not neg) or (f["direction"] == "higher" and neg)
+            if bad_dir:
+                flags.append((tag, "avoid", "方向和低迷型特徵相反", f"{f['label']}：低迷型{'較低' if f['direction']=='lower' else '較高'}；avoid={av[:40]}"))
         if "觸及" in whole:
             flags.append((tag, "全文", "使用了「觸及」（沒有觸及資料）", ""))
         for nm, t in (("summary", a["summary"]), ("avoid", a["avoid"].split("（低迷型")[0])):

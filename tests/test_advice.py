@@ -110,11 +110,11 @@ def test_v7_semantic_rules(mutate, msg):
 
 
 def test_actions_must_match_the_number_of_stable_features():
-    assert A.parse_advice(json.dumps(GOOD, ensure_ascii=False), "提高按讚、建立好感", n_actions=2)
+    assert A.parse_advice(json.dumps(GOOD, ensure_ascii=False), "提高按讚、建立好感", ctx={"n_actions": 2, "target": [], "low": []})
     with pytest.raises(A.AdviceError, match="剛好 1 點"):
-        A.parse_advice(json.dumps(GOOD, ensure_ascii=False), "提高按讚、建立好感", n_actions=1)
+        A.parse_advice(json.dumps(GOOD, ensure_ascii=False), "提高按讚、建立好感", ctx={"n_actions": 1, "target": [], "low": []})
     s = _summary(resonance=[_feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)])
-    assert A.action_count("提高按讚、建立好感", s) == 1 and A.action_count("帶動討論", s) == 0
+    assert A.advice_context("提高按讚、建立好感", s)["n_actions"] == 1 and A.advice_context("帶動討論", s)["n_actions"] == 0
     data = A.advice_input("acct", "提高按讚、建立好感", s)
     assert data["建議點數"] == 1 and data["驗證指標"] == "按讚率中位數"
 
@@ -122,7 +122,7 @@ def test_actions_must_match_the_number_of_stable_features():
 def test_invalid_answer_is_retried_once_then_succeeds():
     bad = dict(GOOD, actions=GOOD["actions"][:1])
     client, calls = _client(_ok(bad), _ok(GOOD))
-    out = A.generate("p", "k", "gemini-3.1-flash-lite", "提高按讚、建立好感", client, n_actions=2)  # one action per stable feature
+    out = A.generate("p", "k", "gemini-3.1-flash-lite", "提高按讚、建立好感", client, ctx={"n_actions": 2, "target": [], "low": []})  # one action per stable feature
     assert out["summary"] == GOOD["summary"] and len(calls) == 2
     assert "上一次的回應不合格" in calls[1]["contents"][0]["parts"][0]["text"]  # the retry says what was wrong
     assert calls[0]["generationConfig"]["responseMimeType"] == "application/json" and "responseSchema" in calls[0]["generationConfig"]
@@ -184,7 +184,7 @@ def test_advise_job_generates_both_goals_and_skips_a_goal_without_stable_feature
         def update(self, table, filters, values):
             Db.updates.append(values)
 
-    monkeypatch.setattr(A, "generate", lambda prompt, key, model, goal, client=None, n_actions=None: dict(GOOD, goal=goal))
+    monkeypatch.setattr(A, "generate", lambda prompt, key, model, goal, client=None, ctx=None: dict(GOOD, goal=goal))
     res = A.advise_job(Db(), {"id": "j1", "username": "acct"}, "k", A.DEFAULT_MODEL, A.GOALS)
     assert isinstance(res["提高按讚、建立好感"], dict) and res["帶動討論"].startswith("skipped: 帶動討論")
     store = A.parse_store(Db.updates[-1]["llm_advice"])
@@ -208,4 +208,27 @@ def test_prompt_change_requires_a_version_bump():
     import hashlib
 
     prompt = A.build_prompt("acct", "提高按讚、建立好感", _summary(resonance=[_feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)]))
-    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (7, "05c709b42957")
+    assert (A.PROMPT_VERSION, hashlib.sha1(prompt.encode()).hexdigest()[:12]) == (8, "f5a4e2e74c90")
+
+
+def test_v8_rounding_and_avoid_direction():
+    length_lower = _feat("char_median", "字數（中位數）", "lower", 26, 137, 13, 27, False)
+    q_low = _feat("question_share", "提問句占比", "lower", 0.0, 0.17, 16, 24)
+    ctx = {"n_actions": 2, "target": [length_lower, _feat("link_share", "含連結占比", "lower", 0.0, 0.26, 13, 27)], "low": [q_low]}
+    ok = dict(GOOD, avoid="避開沒有提問句的貼文（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））")
+    assert A.parse_advice(json.dumps(ok, ensure_ascii=False), "提高按讚、建立好感", ctx)
+    cases = [
+        (lambda o: o["actions"][0].update(do="控制在約 20 字左右以內"), "往上取到十位"),   # 26 rounded DOWN: stricter than the data
+        (lambda o: o.update(avoid="不要使用提問句（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））"), "命令句"),
+        (lambda o: o.update(avoid="避開有提問句的貼文（低迷型 16 篇 vs 其他 24 篇：提問句占比低迷型較低（0% vs 17%））"), "方向不對"),
+        (lambda o: o["actions"][0].update(do="控制在 30 字以內"), "大約範圍"),          # no 約 / 左右
+    ]
+    for mutate, msg in cases:
+        obj = json.loads(json.dumps(ok))
+        mutate(obj)
+        with pytest.raises(A.AdviceError, match=msg):
+            A.parse_advice(json.dumps(obj, ensure_ascii=False), "提高按讚、建立好感", ctx)
+    length_higher = dict(length_lower, direction="higher", group_value=89, others_value=50)
+    up = dict(ok, actions=[dict(GOOD["actions"][0], do="寫到約 90 字左右以上"), GOOD["actions"][1]])
+    with pytest.raises(A.AdviceError, match="往下取到十位"):
+        A.parse_advice(json.dumps(up, ensure_ascii=False), "提高按讚、建立好感", dict(ctx, target=[length_higher, ctx["target"][1]]))

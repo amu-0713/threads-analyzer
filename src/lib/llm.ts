@@ -1,6 +1,6 @@
 // Gemini advice generator. Server-side only: the key comes from LLM_API_KEY and never reaches the browser.
 // No path-alias imports (only relative ones) so the file can also be run directly with node for testing.
-import { DEFAULT_MODEL, RESPONSE_SCHEMA, THINKING, parseAdvice, type AdviceObject, type Goal, type ModelId } from "./advice";
+import { DEFAULT_MODEL, RESPONSE_SCHEMA, THINKING, parseAdvice, type AdviceContext, type AdviceObject, type Goal, type ModelId } from "./advice";
 
 export function llmEnabled(): boolean {
   return Boolean(process.env.LLM_API_KEY);
@@ -70,14 +70,14 @@ async function requestText(key: string, model: ModelId, prompt: string): Promise
 
 /** Structured advice for one goal. A reply that is not valid JSON / misses a field / uses inferential wording is retried once;
  *  if it still fails the reason is thrown and nothing is stored. */
-export async function generateAdvice(model: ModelId, goal: Goal, prompt: string, nActions?: number): Promise<AdviceObject> {
+export async function generateAdvice(model: ModelId, goal: Goal, prompt: string, ctx?: AdviceContext): Promise<AdviceObject> {
   const key = process.env.LLM_API_KEY;
   if (!key) throw new Error("LLM_API_KEY is not set");
   let lastError = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const text = await requestText(key, model, attempt === 0 ? prompt : `${prompt}\n\n（上一次的回應不合格：${lastError}。請修正後重新輸出。）`);
     try {
-      return parseAdvice(text, goal, nActions);
+      return parseAdvice(text, goal, ctx);
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
       console.log(`[llm] invalid answer (attempt ${attempt + 1}): ${lastError}`);
